@@ -14,8 +14,14 @@ import {
 } from 'electron';
 import {
   type BuildWorkbookRowsRequest,
+  type ChangeTranslationTaskStateRequest,
+  type CreateTranslationTaskRequest,
   IPC_CHANNELS,
+  type ListTranslationTasksRequest,
+  type ProcessTranslationBatchRequest,
   PROTOCOL_VERSION,
+  type TranslationTaskIdRequest,
+  type UpdateTranslationRowRequest,
   type WorkbookSelectionResult,
   type WorkbookSession,
   type WorkbookSheetRequest,
@@ -279,6 +285,185 @@ const registerWorkbookIpc = (): void => {
   );
 };
 
+const registerTranslationIpc = (): void => {
+  ipcMain.handle(
+    IPC_CHANNELS.createTranslationTask,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '创建翻译任务请求无效');
+      }
+
+      const request = rawRequest as Partial<CreateTranslationTaskRequest>;
+      const filePath = getActiveWorkbookPath(request.workbookId);
+      if (!filePath) {
+        return createLocalError(
+          'WORKBOOK_SESSION_INVALID',
+          '工作簿会话已失效，请重新选择文件',
+        );
+      }
+      if (
+        typeof request.sheetName !== 'string'
+        || typeof request.headerRow !== 'number'
+        || typeof request.sourceColumn !== 'number'
+      ) {
+        return createLocalError('INVALID_MESSAGE', '翻译任务配置无效');
+      }
+
+      try {
+        return await workerClient?.createTranslationTask(filePath, {
+          sheetName: request.sheetName,
+          headerRow: request.headerRow,
+          sourceColumn: request.sourceColumn,
+          containerColumn: request.containerColumn,
+          targetColumn: request.targetColumn,
+          sourceLanguage: request.sourceLanguage ?? 'ru',
+          targetLanguage: request.targetLanguage ?? 'zh-CN',
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Create translation task failed: ${message}`);
+        return createLocalError(
+          mapWorkerErrorCode(message),
+          '无法创建离线翻译任务',
+        );
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getTranslationTask,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '任务查询请求无效');
+      }
+      const request = rawRequest as Partial<TranslationTaskIdRequest>;
+      if (typeof request.taskId !== 'string') {
+        return createLocalError('INVALID_MESSAGE', '任务 ID 无效');
+      }
+
+      try {
+        return await workerClient?.getTranslationTask(request.taskId)
+          ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Get translation task failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '无法读取翻译任务');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.listTranslationTasks,
+    async (_event, rawRequest: unknown) => {
+      const request = isRecord(rawRequest)
+        ? rawRequest as ListTranslationTasksRequest
+        : {};
+      try {
+        return await workerClient?.listTranslationTasks(request)
+          ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`List translation tasks failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '无法读取任务列表');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.processTranslationBatch,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '批次处理请求无效');
+      }
+      const request = rawRequest as Partial<ProcessTranslationBatchRequest>;
+      if (typeof request.taskId !== 'string') {
+        return createLocalError('INVALID_MESSAGE', '任务 ID 无效');
+      }
+
+      try {
+        return await workerClient?.processTranslationBatch({
+          taskId: request.taskId,
+          batchSize: request.batchSize,
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Process translation batch failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '无法处理翻译批次');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateTranslationRow,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '译文保存请求无效');
+      }
+      const request = rawRequest as Partial<UpdateTranslationRowRequest>;
+      if (
+        typeof request.taskId !== 'string'
+        || typeof request.rowId !== 'string'
+        || typeof request.translation !== 'string'
+      ) {
+        return createLocalError('INVALID_MESSAGE', '译文保存参数无效');
+      }
+
+      try {
+        return await workerClient?.updateTranslationRow({
+          taskId: request.taskId,
+          rowId: request.rowId,
+          translation: request.translation,
+          saveToCache: request.saveToCache,
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Update translation row failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '无法保存人工译文');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.changeTranslationTaskState,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '任务状态请求无效');
+      }
+      const request = rawRequest as Partial<ChangeTranslationTaskStateRequest>;
+      if (
+        typeof request.taskId !== 'string'
+        || !['pause', 'resume', 'cancel', 'retry_failed'].includes(
+          request.action ?? '',
+        )
+      ) {
+        return createLocalError('INVALID_MESSAGE', '任务状态操作无效');
+      }
+
+      try {
+        return await workerClient?.changeTranslationTaskState({
+          taskId: request.taskId,
+          action: request.action as ChangeTranslationTaskStateRequest['action'],
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Change translation task state failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '无法更新任务状态');
+      }
+    },
+  );
+};
 const registerWorkerIpc = (): void => {
   const pythonExecutable = process.env.RUS_TRADE_PYTHON
     ?? (process.platform === 'win32' ? 'python' : 'python3');
@@ -286,6 +471,7 @@ const registerWorkerIpc = (): void => {
   workerClient = new WorkerClient(
     resolveWorkerEntry(),
     pythonExecutable,
+    process.env.RUS_TRADE_DATA_DIR ?? join(app.getPath('userData'), 'data'),
     (level, message) => {
       if (level === 'error') {
         logError(message);
@@ -311,6 +497,7 @@ const registerWorkerIpc = (): void => {
   });
 
   registerWorkbookIpc();
+  registerTranslationIpc();
 };
 
 const createWindow = (): void => {

@@ -14,6 +14,12 @@ export const IPC_CHANNELS = {
   openDroppedWorkbook: 'workbook:open-dropped',
   previewWorkbookSheet: 'workbook:preview-sheet',
   buildWorkbookRows: 'workbook:build-rows',
+  createTranslationTask: 'translation:create-task',
+  getTranslationTask: 'translation:get-task',
+  listTranslationTasks: 'translation:list-tasks',
+  processTranslationBatch: 'translation:process-batch',
+  updateTranslationRow: 'translation:update-row',
+  changeTranslationTaskState: 'translation:change-state',
 } as const
 
 export const WORKER_ACTIONS = {
@@ -21,6 +27,14 @@ export const WORKER_ACTIONS = {
   parseWorkbook: 'parse_workbook',
   previewSheet: 'preview_sheet',
   buildImportRows: 'build_import_rows',
+  createTranslationTask: 'create_translation_task',
+  getTranslationTask: 'get_translation_task',
+  listTranslationTasks: 'list_translation_tasks',
+  processTranslationBatch: 'process_translation_batch',
+  updateTranslationRow: 'update_translation_row',
+  changeTranslationTaskState: 'change_translation_task_state',
+  upsertGlossaryTerm: 'upsert_glossary_term',
+  listGlossaryTerms: 'list_glossary_terms',
 } as const
 
 export type WorkerAction =
@@ -49,6 +63,15 @@ export type WorkerErrorCode =
   | 'HEADER_NOT_FOUND'
   | 'SOURCE_COLUMN_INVALID'
   | 'TARGET_COLUMN_INVALID'
+  | 'DATABASE_ERROR'
+  | 'TASK_NOT_FOUND'
+  | 'TASK_ROW_NOT_FOUND'
+  | 'TASK_ROWS_EMPTY'
+  | 'TASK_STATE_INVALID'
+  | 'TRANSLATOR_UNAVAILABLE'
+  | 'TRANSLATION_TIMEOUT'
+  | 'TRANSLATION_OUTPUT_INVALID'
+  | 'TOKEN_RESTORE_FAILED'
 
 export interface WorkerRequest<
   TAction extends WorkerAction = WorkerAction,
@@ -184,6 +207,112 @@ export interface ImportRowsResult {
   rows: ImportRow[]
 }
 
+export type TranslationTaskStatus =
+  | 'draft'
+  | 'running'
+  | 'paused'
+  | 'awaiting_manual'
+  | 'completed'
+  | 'cancelled'
+
+export type TranslationRowStatus =
+  | 'pending'
+  | 'candidate'
+  | 'needs_manual'
+  | 'completed'
+  | 'failed'
+  | 'ignored'
+
+export type TranslationCandidateSource =
+  | 'existing'
+  | 'cache'
+  | 'glossary'
+  | 'manual'
+
+export interface CreateTranslationTaskRequest
+  extends BuildWorkbookRowsRequest {
+  sourceLanguage?: 'ru'
+  targetLanguage?: 'zh-CN'
+}
+
+export interface TranslationTaskSummary {
+  taskId: string
+  sourceFilePath: string
+  sourceFileName: string
+  sheetName: string
+  headerRow: number
+  sourceColumn: number
+  containerColumn: number | null
+  targetColumn: number | null
+  sourceLanguage: string
+  targetLanguage: string
+  translatorId: string
+  glossaryVersion: number
+  protectionVersion: string
+  status: TranslationTaskStatus
+  totalRows: number
+  pendingRows: number
+  candidateRows: number
+  manualRows: number
+  completedRows: number
+  failedRows: number
+  progress: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TranslationTaskRow {
+  rowId: string
+  excelRowNumber: number
+  sourceCell: string
+  targetCell: string | null
+  containerCell: string | null
+  containerValue: CellValue
+  sourceText: string
+  existingTarget: CellValue
+  translation: string | null
+  candidateSource: TranslationCandidateSource | null
+  status: TranslationRowStatus
+  errorCode: WorkerErrorCode | null
+  userModified: boolean
+  updatedAt: string
+}
+
+export interface TranslationTaskDetail {
+  task: TranslationTaskSummary
+  rows: TranslationTaskRow[]
+}
+
+export interface TranslationTaskIdRequest {
+  taskId: string
+}
+
+export interface ListTranslationTasksRequest {
+  includeCompleted?: boolean
+  limit?: number
+}
+
+export interface TranslationTaskListResult {
+  tasks: TranslationTaskSummary[]
+}
+
+export interface ProcessTranslationBatchRequest {
+  taskId: string
+  batchSize?: number
+}
+
+export interface UpdateTranslationRowRequest {
+  taskId: string
+  rowId: string
+  translation: string
+  saveToCache?: boolean
+}
+
+export interface ChangeTranslationTaskStateRequest {
+  taskId: string
+  action: 'pause' | 'resume' | 'cancel' | 'retry_failed'
+}
+
 export interface WorkerCompletedResponse<TData = unknown> {
   protocolVersion: typeof PROTOCOL_VERSION
   id: string
@@ -215,4 +344,22 @@ export interface DesktopApi {
   buildWorkbookRows: (
     request: BuildWorkbookRowsRequest,
   ) => Promise<WorkerResponse<ImportRowsResult>>
+  createTranslationTask: (
+    request: CreateTranslationTaskRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  getTranslationTask: (
+    request: TranslationTaskIdRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  listTranslationTasks: (
+    request?: ListTranslationTasksRequest,
+  ) => Promise<WorkerResponse<TranslationTaskListResult>>
+  processTranslationBatch: (
+    request: ProcessTranslationBatchRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  updateTranslationRow: (
+    request: UpdateTranslationRowRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  changeTranslationTaskState: (
+    request: ChangeTranslationTaskStateRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
 }

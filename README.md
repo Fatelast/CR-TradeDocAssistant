@@ -1,10 +1,10 @@
 # 中俄贸易文件助手
 
-面向中俄贸易操作场景的本地优先桌面工具。当前仓库已完成 M1 Excel 解析闭环：Electron 桌面端可安全选择或拖入 `.xlsx`，经 Python Worker 完成结构预检、表头与列推荐、有限预览和稳定数据行映射。
+面向中俄贸易操作场景的本地优先桌面工具。当前仓库已完成 M2 离线翻译任务闭环：Electron 桌面端可安全导入 `.xlsx`，经 Python Worker 建立可恢复任务，优先提供本地精确缓存和术语候选，并支持人工确认。
 
 ## 当前范围
 
-M1 已实现：
+M1—M2 已实现：
 
 - 原生文件选择与单文件拖入；
 - 工作表、有效行列数和表头候选识别；
@@ -12,9 +12,14 @@ M1 已实现：
 - 最多 12 行的只读预览，以及 Excel 行号和单元格坐标映射；
 - 10 MiB、5,000 行、200 列的导入边界；
 - 合并单元格、公式、隐藏工作表和高风险对象提示；
-- 条件格式、数据验证、图表、绘图对象、外部链接的受限预览策略。
+- 条件格式、数据验证、图表、绘图对象、外部链接的受限预览策略；
+- SQLite 任务、逐行状态、本地术语和精确缓存持久化；
+- 默认 50 行小批次处理，以及批次后暂停、恢复、中止和失败重试；
+- URL、邮箱、箱号、编号、日期、金额、型号、单位与数字保护；
+- 术语/缓存候选人工确认、未命中内容人工填写；
+- 重启后加载未完成任务。
 
-当前不包含在线翻译、SQLite、术语库、任务恢复和 Excel 导出；这些能力从 M2 开始按已确认文档继续实施。
+当前不包含在线翻译、本地模型和 Excel 导出。M3 将实现完整审核与安全导出；M4 再完善历史、术语导入导出、设置和自动清理。
 
 ## 环境要求
 
@@ -42,10 +47,11 @@ npm test
 npm run build
 ```
 
-如需指定 Python：
+如需指定 Python或隔离本地开发数据：
 
 ```powershell
 $env:RUS_TRADE_PYTHON = 'C:\Path\To\python.exe'
+$env:RUS_TRADE_DATA_DIR = 'D:\Temp\rus-trade-dev-data'
 npm run dev
 ```
 
@@ -57,20 +63,21 @@ npm run dev
 │  └─ src/
 │     ├─ main/                  窗口、活动工作簿会话、Worker 与安全 IPC
 │     ├─ preload/               最小受控 API 与拖入文件路径解析
-│     └─ renderer/              M1 Excel 结构预检工作台
+│     └─ renderer/              Excel 结构预检与离线翻译任务台
 ├─ packages/shared/             TypeScript 协议类型与 JSON Schema
-├─ workers/excel-worker/        openpyxl 只读解析、风险扫描与协议测试
-├─ resources/samples/           M1 脱敏固定回归样本
+├─ workers/excel-worker/        Excel 解析、SQLite、离线匹配与协议测试
+├─ resources/samples/           脱敏固定回归样本
 └─ docs/                        产品、架构和决策文档
 ```
 
 ## 安全边界
 
-- Renderer 不启用 Node.js，不能直接访问文件系统或启动子进程；
+- Renderer 不启用 Node.js，不能直接访问文件系统、数据库或启动子进程；
 - 文件选择、路径校验和活动工作簿会话归 Electron Main 管理；
-- Preload 只暴露工作簿选择、预览、数据行生成和 Worker 诊断白名单；
-- 后续预览与数据行请求只提交临时 `workbookId`，Main 再映射到真实路径；
-- Python Worker 使用只读模式解析，标准输出只允许 JSON Lines 协议消息；
+- Preload 只暴露工作簿、翻译任务和 Worker 诊断白名单；
+- 后续预览与任务创建只提交临时 `workbookId`，Main 再映射到真实路径；
+- Python Worker 标准输出只允许 JSON Lines 协议消息；
+- SQLite 只能由 Python Worker 读写，术语和缓存命中只生成待确认候选；
 - 当前版本不修改或导出原文件，不启用在线翻译，也不上传文件或业务数据。
 
-详细协议参见 [IPC 与 Worker 协议](docs/architecture/ipc-protocol.md)，阶段知识参见 [M1 Excel 导入知识快照](docs/architecture/m1-excel-import.md)。
+详细协议参见 [IPC 与 Worker 协议](docs/architecture/ipc-protocol.md)，阶段知识参见 [M1 Excel 导入知识快照](docs/architecture/m1-excel-import.md) 与 [M2 离线翻译任务知识快照](docs/architecture/m2-offline-translation.md)。

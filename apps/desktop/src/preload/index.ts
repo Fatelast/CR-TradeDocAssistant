@@ -5,9 +5,17 @@ import {
 } from 'electron';
 import {
   type BuildWorkbookRowsRequest,
+  type ChangeTranslationTaskStateRequest,
+  type CreateTranslationTaskRequest,
   type DesktopApi,
   type ImportRowsResult,
   IPC_CHANNELS,
+  type ListTranslationTasksRequest,
+  type ProcessTranslationBatchRequest,
+  type TranslationTaskDetail,
+  type TranslationTaskIdRequest,
+  type TranslationTaskListResult,
+  type UpdateTranslationRowRequest,
   type WorkbookSelectionResult,
   type WorkbookSheetRequest,
   type WorkerInfo,
@@ -47,6 +55,44 @@ const desktopApi: DesktopApi = {
       IPC_CHANNELS.buildWorkbookRows,
       request,
     ) as Promise<WorkerResponse<ImportRowsResult>>
+  ),
+  createTranslationTask: (request: CreateTranslationTaskRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.createTranslationTask,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  getTranslationTask: (request: TranslationTaskIdRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.getTranslationTask,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  listTranslationTasks: (request: ListTranslationTasksRequest = {}) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.listTranslationTasks,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskListResult>>
+  ),
+  processTranslationBatch: (request: ProcessTranslationBatchRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.processTranslationBatch,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  updateTranslationRow: (request: UpdateTranslationRowRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.updateTranslationRow,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  changeTranslationTaskState: (
+    request: ChangeTranslationTaskStateRequest,
+  ) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.changeTranslationTaskState,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
   ),
 };
 

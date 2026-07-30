@@ -1,6 +1,6 @@
 [project]
 name = "rus-trade-excel-worker"
-version = "0.2.0"
+version = "0.3.0"
 description = "中俄贸易文件助手 Excel Worker"
 requires-python = ">=3.11"
 

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -12,6 +14,9 @@ const standardWorkbook = fileURLToPath(
 );
 const pythonExecutable = process.env.RUS_TRADE_PYTHON
   ?? (process.platform === 'win32' ? 'python' : 'python3');
+const workerTestDataRoot = fileURLToPath(
+  new URL('../../../../../workers/excel-worker/.test-data', import.meta.url),
+);
 
 describe('WorkerClient', () => {
   it('returns worker information through JSON Lines', async () => {
@@ -76,6 +81,64 @@ describe('WorkerClient', () => {
           targetCell: 'D3',
           containerCell: 'A3',
         });
+      }
+    } finally {
+      workerClient.stop();
+    }
+  });
+  it('creates and processes a persistent offline translation task', async () => {
+    const workerClient = new WorkerClient(
+      workerEntry,
+      pythonExecutable,
+      join(workerTestDataRoot, `vitest-${randomUUID()}`),
+    );
+
+    try {
+      const created = await workerClient.createTranslationTask(
+        standardWorkbook,
+        {
+          sheetName: '问题反馈',
+          headerRow: 2,
+          sourceColumn: 3,
+          containerColumn: 1,
+          targetColumn: 4,
+          sourceLanguage: 'ru',
+          targetLanguage: 'zh-CN',
+        },
+      );
+
+      expect(created.type).toBe('completed');
+      if (created.type !== 'completed') {
+        return;
+      }
+
+      expect(created.data.task).toMatchObject({
+        status: 'draft',
+        totalRows: 5,
+        pendingRows: 4,
+        completedRows: 1,
+      });
+
+      const processed = await workerClient.processTranslationBatch({
+        taskId: created.data.task.taskId,
+        batchSize: 50,
+      });
+
+      expect(processed.type).toBe('completed');
+      if (processed.type !== 'completed') {
+        return;
+      }
+
+      expect(processed.data.task.status).toBe('awaiting_manual');
+      expect(processed.data.task.pendingRows).toBe(0);
+      expect(
+        processed.data.task.candidateRows + processed.data.task.manualRows,
+      ).toBe(4);
+
+      const listed = await workerClient.listTranslationTasks();
+      expect(listed.type).toBe('completed');
+      if (listed.type === 'completed') {
+        expect(listed.data.tasks[0].taskId).toBe(created.data.task.taskId);
       }
     } finally {
       workerClient.stop();

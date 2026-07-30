@@ -7,10 +7,42 @@
     { "$ref": "#/$defs/parseWorkbookRequest" },
     { "$ref": "#/$defs/previewSheetRequest" },
     { "$ref": "#/$defs/buildImportRowsRequest" },
+    { "$ref": "#/$defs/createTranslationTaskRequest" },
+    { "$ref": "#/$defs/getTranslationTaskRequest" },
+    { "$ref": "#/$defs/listTranslationTasksRequest" },
+    { "$ref": "#/$defs/processTranslationBatchRequest" },
+    { "$ref": "#/$defs/updateTranslationRowRequest" },
+    { "$ref": "#/$defs/changeTranslationTaskStateRequest" },
+    { "$ref": "#/$defs/upsertGlossaryTermRequest" },
+    { "$ref": "#/$defs/listGlossaryTermsRequest" },
     { "$ref": "#/$defs/completedResponse" },
     { "$ref": "#/$defs/errorResponse" }
   ],
   "$defs": {
+    "requestProperties": {
+      "protocolVersion": { "const": "1.0" },
+      "id": { "type": "string", "minLength": 1 },
+      "type": { "const": "request" }
+    },
+    "emptyPayload": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "workbookPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filePath", "sheetName", "headerRow", "sourceColumn"],
+      "properties": {
+        "filePath": { "type": "string", "minLength": 1 },
+        "sheetName": { "type": "string", "minLength": 1 },
+        "headerRow": { "type": "integer", "minimum": 1, "maximum": 5000 },
+        "sourceColumn": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "containerColumn": { "type": ["integer", "null"], "minimum": 1, "maximum": 200 },
+        "targetColumn": { "type": ["integer", "null"], "minimum": 1, "maximum": 200 },
+        "sourceLanguage": { "const": "ru" },
+        "targetLanguage": { "const": "zh-CN" }
+      }
+    },
     "getWorkerInfoRequest": {
       "type": "object",
       "additionalProperties": false,
@@ -20,10 +52,7 @@
         "id": { "type": "string", "minLength": 1 },
         "type": { "const": "request" },
         "action": { "const": "get_worker_info" },
-        "payload": {
-          "type": "object",
-          "additionalProperties": false
-        }
+        "payload": { "$ref": "#/$defs/emptyPayload" }
       }
     },
     "parseWorkbookRequest": {
@@ -39,9 +68,7 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["filePath"],
-          "properties": {
-            "filePath": { "type": "string", "minLength": 1 }
-          }
+          "properties": { "filePath": { "type": "string", "minLength": 1 } }
         }
       }
     },
@@ -75,28 +102,157 @@
         "id": { "type": "string", "minLength": 1 },
         "type": { "const": "request" },
         "action": { "const": "build_import_rows" },
+        "payload": { "$ref": "#/$defs/workbookPayload" }
+      }
+    },
+    "createTranslationTaskRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "create_translation_task" },
+        "payload": { "$ref": "#/$defs/workbookPayload" }
+      }
+    },
+    "getTranslationTaskRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "get_translation_task" },
+        "payload": { "$ref": "#/$defs/taskIdPayload" }
+      }
+    },
+    "listTranslationTasksRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "list_translation_tasks" },
         "payload": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["filePath", "sheetName", "headerRow", "sourceColumn"],
           "properties": {
-            "filePath": { "type": "string", "minLength": 1 },
-            "sheetName": { "type": "string", "minLength": 1 },
-            "headerRow": { "type": "integer", "minimum": 1, "maximum": 5000 },
-            "sourceColumn": { "type": "integer", "minimum": 1, "maximum": 200 },
-            "containerColumn": {
-              "type": ["integer", "null"],
-              "minimum": 1,
-              "maximum": 200
-            },
-            "targetColumn": {
-              "type": ["integer", "null"],
-              "minimum": 1,
-              "maximum": 200
-            }
+            "includeCompleted": { "type": "boolean" },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
           }
         }
       }
+    },
+    "processTranslationBatchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "process_translation_batch" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskId"],
+          "properties": {
+            "taskId": { "type": "string", "minLength": 1 },
+            "batchSize": { "type": "integer", "minimum": 1, "maximum": 200 }
+          }
+        }
+      }
+    },
+    "updateTranslationRowRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "update_translation_row" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskId", "rowId", "translation"],
+          "properties": {
+            "taskId": { "type": "string", "minLength": 1 },
+            "rowId": { "type": "string", "minLength": 1 },
+            "translation": { "type": "string", "minLength": 1 },
+            "saveToCache": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "changeTranslationTaskStateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "change_translation_task_state" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskId", "action"],
+          "properties": {
+            "taskId": { "type": "string", "minLength": 1 },
+            "action": { "enum": ["pause", "resume", "cancel", "retry_failed"] }
+          }
+        }
+      }
+    },
+    "upsertGlossaryTermRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "upsert_glossary_term" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceText", "targetText"],
+          "properties": {
+            "termId": { "type": "string", "minLength": 1 },
+            "sourceText": { "type": "string", "minLength": 1 },
+            "targetText": { "type": "string", "minLength": 1 },
+            "category": { "type": "string" },
+            "exactMatch": { "type": "boolean" },
+            "caseSensitive": { "type": "boolean" },
+            "enabled": { "type": "boolean" },
+            "note": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "listGlossaryTermsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "list_glossary_terms" },
+        "payload": { "$ref": "#/$defs/emptyPayload" }
+      }
+    },
+    "taskIdPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId"],
+      "properties": { "taskId": { "type": "string", "minLength": 1 } }
     },
     "completedResponse": {
       "type": "object",
@@ -124,28 +280,17 @@
           "properties": {
             "code": {
               "enum": [
-                "INVALID_MESSAGE",
-                "PROTOCOL_VERSION_UNSUPPORTED",
-                "UNSUPPORTED_ACTION",
-                "WORKER_INTERNAL_ERROR",
-                "WORKER_START_FAILED",
-                "WORKER_TIMEOUT",
-                "WORKER_EXITED",
-                "FILE_SELECTION_FAILED",
-                "FILE_NOT_FOUND",
-                "FILE_UNSUPPORTED",
-                "FILE_LOCKED",
-                "FILE_TOO_LARGE",
-                "WORKBOOK_OPEN_FAILED",
-                "WORKBOOK_ENCRYPTED",
-                "WORKBOOK_ARCHIVE_TOO_LARGE",
-                "WORKBOOK_SESSION_INVALID",
-                "ROW_LIMIT_EXCEEDED",
-                "COLUMN_LIMIT_EXCEEDED",
-                "SHEET_NOT_FOUND",
-                "HEADER_NOT_FOUND",
-                "SOURCE_COLUMN_INVALID",
-                "TARGET_COLUMN_INVALID"
+                "INVALID_MESSAGE", "PROTOCOL_VERSION_UNSUPPORTED", "UNSUPPORTED_ACTION",
+                "WORKER_INTERNAL_ERROR", "WORKER_START_FAILED", "WORKER_TIMEOUT",
+                "WORKER_EXITED", "FILE_SELECTION_FAILED", "FILE_NOT_FOUND",
+                "FILE_UNSUPPORTED", "FILE_LOCKED", "FILE_TOO_LARGE",
+                "WORKBOOK_OPEN_FAILED", "WORKBOOK_ENCRYPTED", "WORKBOOK_ARCHIVE_TOO_LARGE",
+                "WORKBOOK_SESSION_INVALID", "ROW_LIMIT_EXCEEDED", "COLUMN_LIMIT_EXCEEDED",
+                "SHEET_NOT_FOUND", "HEADER_NOT_FOUND", "SOURCE_COLUMN_INVALID",
+                "TARGET_COLUMN_INVALID", "DATABASE_ERROR", "TASK_NOT_FOUND",
+                "TASK_ROW_NOT_FOUND", "TASK_ROWS_EMPTY", "TASK_STATE_INVALID",
+                "TRANSLATOR_UNAVAILABLE", "TRANSLATION_TIMEOUT", "TRANSLATION_OUTPUT_INVALID",
+                "TOKEN_RESTORE_FAILED"
               ]
             },
             "message": { "type": "string" }

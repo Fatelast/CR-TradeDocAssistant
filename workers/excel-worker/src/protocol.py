@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import platform
+import sqlite3
 import sys
 from dataclasses import dataclass
 from typing import Any
@@ -14,9 +15,20 @@ from workbook import (
     parse_workbook,
     preview_sheet,
 )
+from tasks import (
+    TaskError,
+    change_translation_task_state,
+    create_translation_task,
+    get_translation_task,
+    list_glossary_terms,
+    list_translation_tasks,
+    process_translation_batch,
+    update_translation_row,
+    upsert_glossary_term,
+)
 
 PROTOCOL_VERSION = "1.0"
-WORKER_VERSION = "0.2.0"
+WORKER_VERSION = "0.3.0"
 
 
 @dataclass(frozen=True)
@@ -110,6 +122,22 @@ def _handle_action(action: Any, payload: dict[str, Any]) -> dict[str, Any]:
             payload.get("containerColumn"),
             payload.get("targetColumn"),
         )
+    if action == "create_translation_task":
+        return create_translation_task(payload)
+    if action == "get_translation_task":
+        return get_translation_task(payload)
+    if action == "list_translation_tasks":
+        return list_translation_tasks(payload)
+    if action == "process_translation_batch":
+        return process_translation_batch(payload)
+    if action == "update_translation_row":
+        return update_translation_row(payload)
+    if action == "change_translation_task_state":
+        return change_translation_task_state(payload)
+    if action == "upsert_glossary_term":
+        return upsert_glossary_term(payload)
+    if action == "list_glossary_terms":
+        return list_glossary_terms(payload)
 
     raise ProtocolError("UNSUPPORTED_ACTION", "不支持的 Worker 指令")
 
@@ -128,7 +156,7 @@ def handle_line(raw_line: str) -> dict[str, Any]:
         request = _validate_request(message)
         data = _handle_action(request.get("action"), request["payload"])
         return _completed_response(request["id"], data)
-    except WorkbookError as error:
+    except (WorkbookError, TaskError) as error:
         request_id = (
             message.get("id", "unknown")
             if isinstance(message, dict)
@@ -136,6 +164,19 @@ def handle_line(raw_line: str) -> dict[str, Any]:
         )
         return _error_response(
             ProtocolError(error.code, error.message, request_id)
+        )
+    except sqlite3.Error:
+        request_id = (
+            message.get("id", "unknown")
+            if isinstance(message, dict)
+            else "unknown"
+        )
+        return _error_response(
+            ProtocolError(
+                "DATABASE_ERROR",
+                "本地任务数据库操作失败",
+                request_id,
+            )
         )
     except ProtocolError as error:
         request_id = (

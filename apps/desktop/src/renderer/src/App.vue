@@ -8,6 +8,8 @@ import { useI18n } from 'vue-i18n';
 
 import type {
   ImportRowsResult,
+  TranslationTaskDetail,
+  TranslationTaskSummary,
   WorkbookSelectionResult,
   WorkbookSession,
   WorkerErrorCode,
@@ -15,8 +17,16 @@ import type {
   WorksheetPreview,
 } from '@rus-trade/shared';
 
+import TranslationTaskPanel from './components/TranslationTaskPanel.vue';
+
 type DiagnosticStatus = 'checking' | 'healthy' | 'error';
-type ImportStatus = 'idle' | 'opening' | 'previewing' | 'ready' | 'building';
+type ImportStatus =
+  | 'idle'
+  | 'opening'
+  | 'previewing'
+  | 'ready'
+  | 'building'
+  | 'creating';
 
 const { t } = useI18n();
 const diagnosticStatus = ref<DiagnosticStatus>('checking');
@@ -25,6 +35,8 @@ const importStatus = ref<ImportStatus>('idle');
 const workbook = ref<WorkbookSession>();
 const preview = ref<WorksheetPreview>();
 const generatedRows = ref<ImportRowsResult>();
+const activeTask = ref<TranslationTaskDetail>();
+const recentTasks = ref<TranslationTaskSummary[]>([]);
 const selectedSheetName = ref('');
 const headerRow = ref(1);
 const sourceColumn = ref<number | null>(null);
@@ -35,7 +47,7 @@ const errorMessage = ref<string>();
 const isDragging = ref(false);
 
 const isBusy = computed(() => (
-  ['opening', 'previewing', 'building'].includes(importStatus.value)
+  ['opening', 'previewing', 'building', 'creating'].includes(importStatus.value)
 ));
 const diagnosticCaption = computed(() => {
   if (diagnosticStatus.value === 'healthy') {
@@ -59,7 +71,17 @@ const formattedFileSize = computed(() => {
 });
 const previewTableColumns = computed(() => preview.value?.columns ?? []);
 const previewRows = computed(() => preview.value?.rows ?? []);
-const generatedPreviewRows = computed(() => generatedRows.value?.rows.slice(0, 20) ?? []);
+const generatedPreviewRows = computed(() => (
+  generatedRows.value?.rows.slice(0, 20) ?? []
+));
+const stageKicker = computed(() => (
+  activeTask.value
+    ? 'M2 · OFFLINE TRANSLATION'
+    : 'M1 · WORKBOOK INTAKE'
+));
+const stageTitle = computed(() => (
+  activeTask.value ? t('离线翻译任务') : t('Excel 结构预检')
+));
 
 const clearError = (): void => {
   errorCode.value = undefined;
@@ -85,6 +107,37 @@ const runDiagnostic = async (): Promise<void> => {
   } catch {
     diagnosticStatus.value = 'error';
   }
+};
+
+const loadRecentTasks = async (): Promise<void> => {
+  const response = await window.tradeAssistant.listTranslationTasks({
+    includeCompleted: false,
+    limit: 8,
+  });
+  if (response.type === 'error') {
+    setError(response.error.code, response.error.message);
+    return;
+  }
+  recentTasks.value = response.data.tasks;
+};
+
+const openTask = async (taskId: string): Promise<void> => {
+  clearError();
+  const response = await window.tradeAssistant.getTranslationTask({ taskId });
+  if (response.type === 'error') {
+    setError(response.error.code, response.error.message);
+    return;
+  }
+  activeTask.value = response.data;
+};
+
+const handleTaskUpdated = (detail: TranslationTaskDetail): void => {
+  activeTask.value = detail;
+  void loadRecentTasks();
+};
+
+const handleTaskError = (code: WorkerErrorCode, message: string): void => {
+  setError(code, message);
 };
 
 const loadPreview = async (): Promise<void> => {
@@ -135,6 +188,7 @@ const applyWorkbookSelection = async (
   }
 
   const session = result.response.data;
+  activeTask.value = undefined;
   workbook.value = session;
   selectedSheetName.value = session.defaultSheetName;
   headerRow.value = session.sheets.find(
@@ -151,6 +205,11 @@ const selectWorkbook = async (): Promise<void> => {
   await applyWorkbookSelection(
     await window.tradeAssistant.selectWorkbook(),
   );
+};
+
+const startNewWorkbook = async (): Promise<void> => {
+  activeTask.value = undefined;
+  await selectWorkbook();
 };
 
 const handleDrop = async (event: DragEvent): Promise<void> => {
@@ -200,9 +259,38 @@ const buildRows = async (): Promise<void> => {
   importStatus.value = 'ready';
 };
 
+const createTranslationTask = async (): Promise<void> => {
+  if (!workbook.value || !sourceColumn.value || !generatedRows.value) {
+    setError('TASK_ROWS_EMPTY', '请先生成稳定数据行');
+    return;
+  }
+
+  clearError();
+  importStatus.value = 'creating';
+  const response = await window.tradeAssistant.createTranslationTask({
+    workbookId: workbook.value.workbookId,
+    sheetName: selectedSheetName.value,
+    headerRow: headerRow.value,
+    sourceColumn: sourceColumn.value,
+    containerColumn: containerColumn.value,
+    targetColumn: targetColumn.value,
+    sourceLanguage: 'ru',
+    targetLanguage: 'zh-CN',
+  });
+  importStatus.value = 'ready';
+
+  if (response.type === 'error') {
+    setError(response.error.code, response.error.message);
+    return;
+  }
+  activeTask.value = response.data;
+  await loadRecentTasks();
+};
+
 onMounted(() => {
   document.title = t('中俄贸易文件助手');
   void runDiagnostic();
+  void loadRecentTasks();
 });
 </script>
 
@@ -228,7 +316,7 @@ onMounted(() => {
           </p>
           <h1>{{ t('中俄贸易文件助手') }}</h1>
           <p class="brand-subtitle">
-            {{ t('Excel 导入与结构预检工作台') }}
+            {{ t('Excel 导入与离线翻译工作台') }}
           </p>
         </div>
       </div>
@@ -239,7 +327,7 @@ onMounted(() => {
           :class="`status-dot--${diagnosticStatus}`"
         />
         <div>
-          <small>{{ t('系统基线') }} · M1</small>
+          <small>{{ t('系统基线') }} · M2</small>
           <strong>{{ diagnosticCaption }}</strong>
         </div>
         <code>{{ workerInfo?.workerVersion ?? '—' }}</code>
@@ -248,35 +336,42 @@ onMounted(() => {
 
     <section class="stage-shell">
       <aside class="stage-rail">
-        <p>IMPORT SEQUENCE</p>
+        <p>WORK SEQUENCE</p>
         <ol>
-          <li :class="{ active: !workbook }">
+          <li :class="{ active: !workbook && !activeTask }">
             <span>01</span>
             <div>
               <strong>{{ t('选择文件') }}</strong>
               <small>LOCAL XLSX</small>
             </div>
           </li>
-          <li :class="{ active: workbook && !generatedRows }">
+          <li :class="{ active: workbook && !generatedRows && !activeTask }">
             <span>02</span>
             <div>
               <strong>{{ t('确认结构') }}</strong>
               <small>SHEET / HEADER</small>
             </div>
           </li>
-          <li :class="{ active: generatedRows }">
+          <li :class="{ active: generatedRows && !activeTask }">
             <span>03</span>
             <div>
               <strong>{{ t('生成数据行') }}</strong>
               <small>ROW MAPPING</small>
             </div>
           </li>
+          <li :class="{ active: activeTask }">
+            <span>04</span>
+            <div>
+              <strong>{{ t('离线翻译') }}</strong>
+              <small>GLOSSARY / MANUAL</small>
+            </div>
+          </li>
         </ol>
 
         <div class="limit-card">
-          <span>{{ t('导入上限') }}</span>
-          <strong>10 MiB</strong>
-          <small>5,000 ROWS / 200 COLS</small>
+          <span>{{ t('当前模式') }}</span>
+          <strong>{{ t('完全离线') }}</strong>
+          <small>NO FILE UPLOAD / NO API</small>
         </div>
       </aside>
 
@@ -284,22 +379,44 @@ onMounted(() => {
         <section class="stage-heading">
           <div>
             <p class="section-kicker">
-              M1 · WORKBOOK INTAKE
+              {{ stageKicker }}
             </p>
-            <h2>{{ t('Excel 结构预检') }}</h2>
+            <h2>{{ stageTitle }}</h2>
           </div>
           <button
             class="secondary-button"
             type="button"
             :disabled="isBusy"
-            @click="selectWorkbook"
+            @click="startNewWorkbook"
           >
-            {{ workbook ? t('更换文件') : t('选择 Excel 文件') }}
+            {{ workbook || activeTask ? t('新建文件任务') : t('选择 Excel 文件') }}
+          </button>
+        </section>
+
+        <section
+          v-if="recentTasks.length && !activeTask"
+          class="resume-shelf"
+        >
+          <div>
+            <span>{{ t('本机未完成任务') }}</span>
+            <strong>{{ recentTasks.length }}</strong>
+          </div>
+          <button
+            v-for="task in recentTasks"
+            :key="task.taskId"
+            type="button"
+            @click="openTask(task.taskId)"
+          >
+            <span>{{ task.sourceFileName }}</span>
+            <small>
+              {{ task.completedRows }}/{{ task.totalRows }} ·
+              {{ t(task.status) }}
+            </small>
           </button>
         </section>
 
         <button
-          v-if="!workbook"
+          v-if="!workbook && !activeTask"
           class="drop-zone"
           :class="{ 'drop-zone--active': isDragging }"
           type="button"
@@ -310,7 +427,7 @@ onMounted(() => {
           <strong>
             {{ isBusy ? t('正在执行兼容性预检') : t('选择或拖入 Excel 文件') }}
           </strong>
-          <small>{{ t('文件只在本机只读解析，不会上传或修改原文件。') }}</small>
+          <small>{{ t('文件与译文只保存在本机，不会上传。') }}</small>
         </button>
 
         <div
@@ -322,7 +439,7 @@ onMounted(() => {
           <span>{{ t(errorMessage ?? '未知错误') }}</span>
         </div>
 
-        <template v-if="workbook">
+        <template v-if="workbook && !activeTask">
           <section class="file-ledger">
             <div class="file-primary">
               <span class="file-type">XLSX</span>
@@ -484,7 +601,7 @@ onMounted(() => {
                 :disabled="isBusy || !sourceColumn"
                 @click="buildRows"
               >
-                {{ importStatus === 'building' ? t('正在生成') : t('生成 M1 数据行') }}
+                {{ importStatus === 'building' ? t('正在生成') : t('生成稳定数据行') }}
               </button>
             </div>
 
@@ -537,11 +654,33 @@ onMounted(() => {
                 <code>{{ row.sourceCell }}</code>
                 <span>{{ row.containerValue ?? '—' }}</span>
                 <p>{{ row.sourceText }}</p>
-                <small>{{ t('待进入 M2 翻译') }}</small>
+                <small>{{ t('等待建立离线任务') }}</small>
               </article>
+            </div>
+            <div class="translation-launch">
+              <div>
+                <span>LOCAL PIPELINE READY</span>
+                <strong>{{ t('术语匹配、精确缓存与人工填写') }}</strong>
+                <small>{{ t('已有译文不会被覆盖，未命中内容保持待人工填写。') }}</small>
+              </div>
+              <button
+                class="primary-button"
+                type="button"
+                :disabled="isBusy"
+                @click="createTranslationTask"
+              >
+                {{ importStatus === 'creating' ? t('正在建立任务') : t('建立离线翻译任务') }}
+              </button>
             </div>
           </section>
         </template>
+
+        <TranslationTaskPanel
+          v-if="activeTask"
+          :detail="activeTask"
+          @updated="handleTaskUpdated"
+          @error="handleTaskError"
+        />
       </div>
     </section>
 
@@ -554,8 +693,8 @@ onMounted(() => {
     </div>
 
     <footer class="workspace-footer">
-      <span>RUS-TRADE-FILE-ASSISTANT / M1</span>
-      <span>LOCAL READ-ONLY · PROTOCOL 1.0</span>
+      <span>RUS-TRADE-FILE-ASSISTANT / M2</span>
+      <span>LOCAL TASK DB · OFFLINE TRANSLATOR · PROTOCOL 1.0</span>
     </footer>
   </main>
 </template>

@@ -21,4 +21,5 @@ Thumbs.db
 
 workers/excel-worker/build/
 workers/excel-worker/dist/
+workers/excel-worker/.test-data/
 *.spec

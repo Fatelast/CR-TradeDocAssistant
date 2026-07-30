@@ -6,8 +6,15 @@ import {
 import { createInterface, type Interface } from 'node:readline';
 
 import {
+  type ChangeTranslationTaskStateRequest,
+  type CreateTranslationTaskRequest,
   type ImportRowsResult,
+  type ListTranslationTasksRequest,
+  type ProcessTranslationBatchRequest,
   PROTOCOL_VERSION,
+  type TranslationTaskDetail,
+  type TranslationTaskListResult,
+  type UpdateTranslationRowRequest,
   type WorkerAction,
   type WorkerInfo,
   type WorkerRequest,
@@ -32,7 +39,7 @@ type WorkerLogHandler = (
  * 管理单个持久 Python Worker。
  *
  * Context：M0—V1 只允许一个 Worker 执行长任务，因此请求在一个进程内按
- * JSON Lines 传递；这样后续增加进度和恢复时，不需要更换进程通信方式。
+ * JSON Lines 传递；M2 以小批次请求实现暂停与恢复，不引入额外并发进程。
  */
 export class WorkerClient {
   private childProcess?: ChildProcessWithoutNullStreams;
@@ -45,15 +52,19 @@ export class WorkerClient {
 
   private readonly pythonExecutable: string;
 
+  private readonly dataDirectory: string;
+
   private readonly onLog: WorkerLogHandler;
 
   constructor(
     workerEntry: string,
     pythonExecutable: string,
+    dataDirectory = '',
     onLog: WorkerLogHandler = () => undefined,
   ) {
     this.workerEntry = workerEntry;
     this.pythonExecutable = pythonExecutable;
+    this.dataDirectory = dataDirectory;
     this.onLog = onLog;
   }
 
@@ -109,6 +120,63 @@ export class WorkerClient {
     );
   }
 
+  async createTranslationTask(
+    filePath: string,
+    request: Omit<CreateTranslationTaskRequest, 'workbookId'>,
+  ): Promise<WorkerResponse<TranslationTaskDetail>> {
+    return this.request<TranslationTaskDetail>(
+      WORKER_ACTIONS.createTranslationTask,
+      { ...request, filePath },
+      30_000,
+    );
+  }
+
+  async getTranslationTask(
+    taskId: string,
+  ): Promise<WorkerResponse<TranslationTaskDetail>> {
+    return this.request<TranslationTaskDetail>(
+      WORKER_ACTIONS.getTranslationTask,
+      { taskId },
+    );
+  }
+
+  async listTranslationTasks(
+    request: ListTranslationTasksRequest = {},
+  ): Promise<WorkerResponse<TranslationTaskListResult>> {
+    return this.request<TranslationTaskListResult>(
+      WORKER_ACTIONS.listTranslationTasks,
+      { ...request },
+    );
+  }
+
+  async processTranslationBatch(
+    request: ProcessTranslationBatchRequest,
+  ): Promise<WorkerResponse<TranslationTaskDetail>> {
+    return this.request<TranslationTaskDetail>(
+      WORKER_ACTIONS.processTranslationBatch,
+      { ...request },
+      30_000,
+    );
+  }
+
+  async updateTranslationRow(
+    request: UpdateTranslationRowRequest,
+  ): Promise<WorkerResponse<TranslationTaskDetail>> {
+    return this.request<TranslationTaskDetail>(
+      WORKER_ACTIONS.updateTranslationRow,
+      { ...request },
+    );
+  }
+
+  async changeTranslationTaskState(
+    request: ChangeTranslationTaskStateRequest,
+  ): Promise<WorkerResponse<TranslationTaskDetail>> {
+    return this.request<TranslationTaskDetail>(
+      WORKER_ACTIONS.changeTranslationTaskState,
+      { ...request },
+    );
+  }
+
   stop(): void {
     this.stdoutReader?.close();
     this.stdoutReader = undefined;
@@ -135,6 +203,7 @@ export class WorkerClient {
           ...process.env,
           PYTHONIOENCODING: 'utf-8',
           PYTHONUTF8: '1',
+          RUS_TRADE_DATA_DIR: this.dataDirectory,
         },
         stdio: 'pipe',
         windowsHide: true,
