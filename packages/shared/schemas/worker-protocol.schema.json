@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rus-trade.local/schemas/worker-protocol.schema.json",
+  "title": "中俄贸易文件助手 Worker 协议",
+  "oneOf": [
+    { "$ref": "#/$defs/getWorkerInfoRequest" },
+    { "$ref": "#/$defs/parseWorkbookRequest" },
+    { "$ref": "#/$defs/previewSheetRequest" },
+    { "$ref": "#/$defs/buildImportRowsRequest" },
+    { "$ref": "#/$defs/completedResponse" },
+    { "$ref": "#/$defs/errorResponse" }
+  ],
+  "$defs": {
+    "getWorkerInfoRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "get_worker_info" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      }
+    },
+    "parseWorkbookRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "parse_workbook" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filePath"],
+          "properties": {
+            "filePath": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "previewSheetRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "preview_sheet" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filePath", "sheetName", "headerRow"],
+          "properties": {
+            "filePath": { "type": "string", "minLength": 1 },
+            "sheetName": { "type": "string", "minLength": 1 },
+            "headerRow": { "type": "integer", "minimum": 1, "maximum": 5000 }
+          }
+        }
+      }
+    },
+    "buildImportRowsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "build_import_rows" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filePath", "sheetName", "headerRow", "sourceColumn"],
+          "properties": {
+            "filePath": { "type": "string", "minLength": 1 },
+            "sheetName": { "type": "string", "minLength": 1 },
+            "headerRow": { "type": "integer", "minimum": 1, "maximum": 5000 },
+            "sourceColumn": { "type": "integer", "minimum": 1, "maximum": 200 },
+            "containerColumn": {
+              "type": ["integer", "null"],
+              "minimum": 1,
+              "maximum": 200
+            },
+            "targetColumn": {
+              "type": ["integer", "null"],
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        }
+      }
+    },
+    "completedResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "data"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "completed" },
+        "data": { "type": "object" }
+      }
+    },
+    "errorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "error"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "error" },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_MESSAGE",
+                "PROTOCOL_VERSION_UNSUPPORTED",
+                "UNSUPPORTED_ACTION",
+                "WORKER_INTERNAL_ERROR",
+                "WORKER_START_FAILED",
+                "WORKER_TIMEOUT",
+                "WORKER_EXITED",
+                "FILE_SELECTION_FAILED",
+                "FILE_NOT_FOUND",
+                "FILE_UNSUPPORTED",
+                "FILE_LOCKED",
+                "FILE_TOO_LARGE",
+                "WORKBOOK_OPEN_FAILED",
+                "WORKBOOK_ENCRYPTED",
+                "WORKBOOK_ARCHIVE_TOO_LARGE",
+                "WORKBOOK_SESSION_INVALID",
+                "ROW_LIMIT_EXCEEDED",
+                "COLUMN_LIMIT_EXCEEDED",
+                "SHEET_NOT_FOUND",
+                "HEADER_NOT_FOUND",
+                "SOURCE_COLUMN_INVALID",
+                "TARGET_COLUMN_INVALID"
+              ]
+            },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

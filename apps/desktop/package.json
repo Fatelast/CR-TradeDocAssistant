@@ -1,0 +1,39 @@
+{
+  "name": "@rus-trade/desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "中俄贸易文件助手桌面端",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "lint": "eslint . --ext .ts,.vue --max-warnings=0",
+    "test": "vitest run --pool=threads --maxWorkers=1"
+  },
+  "dependencies": {
+    "@rus-trade/shared": "*",
+    "vue": "^3.5.40",
+    "vue-i18n": "^11.4.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "electron": "^43.2.0",
+    "electron-vite": "^5.0.0",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-import-resolver-node": "^0.3.9",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-vue": "^9.33.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10",
+    "vue-eslint-parser": "^10.2.0",
+    "vue-tsc": "^3.3.8"
+  }
+}

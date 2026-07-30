@@ -1,0 +1,218 @@
+export const PROTOCOL_VERSION = '1.0' as const
+
+export const IMPORT_LIMITS = {
+  maxFileSizeBytes: 10 * 1024 * 1024,
+  maxRows: 5_000,
+  maxColumns: 200,
+  headerScanRows: 12,
+  previewRows: 12,
+} as const
+
+export const IPC_CHANNELS = {
+  getWorkerInfo: 'worker:get-info',
+  selectWorkbook: 'workbook:select',
+  openDroppedWorkbook: 'workbook:open-dropped',
+  previewWorkbookSheet: 'workbook:preview-sheet',
+  buildWorkbookRows: 'workbook:build-rows',
+} as const
+
+export const WORKER_ACTIONS = {
+  getWorkerInfo: 'get_worker_info',
+  parseWorkbook: 'parse_workbook',
+  previewSheet: 'preview_sheet',
+  buildImportRows: 'build_import_rows',
+} as const
+
+export type WorkerAction =
+  (typeof WORKER_ACTIONS)[keyof typeof WORKER_ACTIONS]
+
+export type WorkerErrorCode =
+  | 'INVALID_MESSAGE'
+  | 'PROTOCOL_VERSION_UNSUPPORTED'
+  | 'UNSUPPORTED_ACTION'
+  | 'WORKER_INTERNAL_ERROR'
+  | 'WORKER_START_FAILED'
+  | 'WORKER_TIMEOUT'
+  | 'WORKER_EXITED'
+  | 'FILE_SELECTION_FAILED'
+  | 'FILE_NOT_FOUND'
+  | 'FILE_UNSUPPORTED'
+  | 'FILE_LOCKED'
+  | 'FILE_TOO_LARGE'
+  | 'WORKBOOK_OPEN_FAILED'
+  | 'WORKBOOK_ENCRYPTED'
+  | 'WORKBOOK_ARCHIVE_TOO_LARGE'
+  | 'WORKBOOK_SESSION_INVALID'
+  | 'ROW_LIMIT_EXCEEDED'
+  | 'COLUMN_LIMIT_EXCEEDED'
+  | 'SHEET_NOT_FOUND'
+  | 'HEADER_NOT_FOUND'
+  | 'SOURCE_COLUMN_INVALID'
+  | 'TARGET_COLUMN_INVALID'
+
+export interface WorkerRequest<
+  TAction extends WorkerAction = WorkerAction,
+  TPayload extends Record<string, unknown> = Record<string, unknown>,
+> {
+  protocolVersion: typeof PROTOCOL_VERSION
+  id: string
+  type: 'request'
+  action: TAction
+  payload: TPayload
+}
+
+export interface WorkerInfo {
+  workerVersion: string
+  protocolVersion: typeof PROTOCOL_VERSION
+  pythonVersion: string
+  platform: string
+}
+
+export type WorksheetState = 'visible' | 'hidden' | 'veryHidden'
+
+export type WorkbookRiskCode =
+  | 'EXTERNAL_LINKS'
+  | 'CHARTS'
+  | 'DRAWINGS'
+  | 'DATA_VALIDATION'
+  | 'CONDITIONAL_FORMATTING'
+  | 'MERGED_CELLS'
+  | 'FORMULAS'
+  | 'HIDDEN_SHEETS'
+
+export interface WorkbookRisk {
+  code: WorkbookRiskCode
+  severity: 'notice' | 'restricted'
+  message: string
+}
+
+export interface ImportLimits {
+  maxFileSizeBytes: number
+  maxRows: number
+  maxColumns: number
+  headerScanRows: number
+  previewRows: number
+}
+
+export interface WorksheetSummary {
+  name: string
+  state: WorksheetState
+  rowCount: number
+  columnCount: number
+  headerCandidateRows: number[]
+  recommendedHeaderRow: number
+}
+
+export interface WorkbookSummary {
+  fileName: string
+  fileSizeBytes: number
+  defaultSheetName: string
+  sheets: WorksheetSummary[]
+  risks: WorkbookRisk[]
+  restricted: boolean
+  limits: ImportLimits
+}
+
+export interface WorkbookSession extends WorkbookSummary {
+  workbookId: string
+  filePath: string
+}
+
+export interface WorkbookSelectionResult {
+  cancelled: boolean
+  response?: WorkerResponse<WorkbookSession>
+}
+
+export type CellValue = string | number | boolean | null
+
+export interface WorkbookColumn {
+  index: number
+  letter: string
+  label: string
+}
+
+export interface ColumnRecommendations {
+  containerColumn: number | null
+  sourceColumn: number | null
+  targetColumn: number | null
+}
+
+export interface WorksheetPreviewRow {
+  excelRowNumber: number
+  values: CellValue[]
+}
+
+export interface WorksheetPreview {
+  sheetName: string
+  headerRow: number
+  totalRows: number
+  columns: WorkbookColumn[]
+  recommendations: ColumnRecommendations
+  rows: WorksheetPreviewRow[]
+}
+
+export interface WorkbookSheetRequest {
+  workbookId: string
+  sheetName: string
+  headerRow: number
+}
+
+export interface BuildWorkbookRowsRequest {
+  workbookId: string
+  sheetName: string
+  headerRow: number
+  sourceColumn: number
+  containerColumn?: number | null
+  targetColumn?: number | null
+}
+
+export interface ImportRow {
+  rowId: string
+  excelRowNumber: number
+  sourceCell: string
+  targetCell: string | null
+  containerCell: string | null
+  containerValue: CellValue
+  sourceText: string
+  existingTarget: CellValue
+  status: 'pending'
+}
+
+export interface ImportRowsResult {
+  sheetName: string
+  totalRows: number
+  rows: ImportRow[]
+}
+
+export interface WorkerCompletedResponse<TData = unknown> {
+  protocolVersion: typeof PROTOCOL_VERSION
+  id: string
+  type: 'completed'
+  data: TData
+}
+
+export interface WorkerErrorResponse {
+  protocolVersion: typeof PROTOCOL_VERSION
+  id: string
+  type: 'error'
+  error: {
+    code: WorkerErrorCode
+    message: string
+  }
+}
+
+export type WorkerResponse<TData = unknown> =
+  | WorkerCompletedResponse<TData>
+  | WorkerErrorResponse
+
+export interface DesktopApi {
+  getWorkerInfo: () => Promise<WorkerResponse<WorkerInfo>>
+  selectWorkbook: () => Promise<WorkbookSelectionResult>
+  openDroppedWorkbook: (file: unknown) => Promise<WorkbookSelectionResult>
+  previewWorkbookSheet: (
+    request: WorkbookSheetRequest,
+  ) => Promise<WorkerResponse<WorksheetPreview>>
+  buildWorkbookRows: (
+    request: BuildWorkbookRowsRequest,
+  ) => Promise<WorkerResponse<ImportRowsResult>>
+}

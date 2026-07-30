@@ -1,0 +1,25 @@
+{
+  "name": "rus-trade-file-assistant",
+  "version": "0.2.0",
+  "private": true,
+  "description": "中俄贸易文件助手桌面应用",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup:electron": "node scripts/ensure-electron.cjs",
+    "predev": "npm run setup:electron",
+    "dev": "npm run dev --workspace @rus-trade/desktop",
+    "build": "npm run build --workspace @rus-trade/desktop",
+    "typecheck": "npm run typecheck --workspace @rus-trade/desktop",
+    "lint": "npm run lint --workspace @rus-trade/desktop",
+    "test": "npm run test:worker && npm run test:desktop",
+    "test:worker": "python -m unittest discover -s workers/excel-worker/tests -p \"test_*.py\"",
+    "test:desktop": "npm run test --workspace @rus-trade/desktop"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}
