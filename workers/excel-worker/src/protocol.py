@@ -9,6 +9,11 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+from exporter import (
+    ExportError,
+    export_translation_task,
+    preflight_export,
+)
 from workbook import (
     WorkbookError,
     build_import_rows,
@@ -23,12 +28,13 @@ from tasks import (
     list_glossary_terms,
     list_translation_tasks,
     process_translation_batch,
+    review_translation_row,
     update_translation_row,
     upsert_glossary_term,
 )
 
 PROTOCOL_VERSION = "1.0"
-WORKER_VERSION = "0.3.0"
+WORKER_VERSION = "0.4.0"
 
 
 @dataclass(frozen=True)
@@ -134,6 +140,12 @@ def _handle_action(action: Any, payload: dict[str, Any]) -> dict[str, Any]:
         return update_translation_row(payload)
     if action == "change_translation_task_state":
         return change_translation_task_state(payload)
+    if action == "review_translation_row":
+        return review_translation_row(payload)
+    if action == "preflight_export":
+        return preflight_export(payload)
+    if action == "export_translation_task":
+        return export_translation_task(payload)
     if action == "upsert_glossary_term":
         return upsert_glossary_term(payload)
     if action == "list_glossary_terms":
@@ -156,7 +168,7 @@ def handle_line(raw_line: str) -> dict[str, Any]:
         request = _validate_request(message)
         data = _handle_action(request.get("action"), request["payload"])
         return _completed_response(request["id"], data)
-    except (WorkbookError, TaskError) as error:
+    except (WorkbookError, TaskError, ExportError) as error:
         request_id = (
             message.get("id", "unknown")
             if isinstance(message, dict)

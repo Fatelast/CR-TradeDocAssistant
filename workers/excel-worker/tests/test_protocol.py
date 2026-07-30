@@ -129,6 +129,22 @@ class ProtocolTestCase(unittest.TestCase):
         self.assertEqual(rows_data["rows"][0]["targetCell"], "D3")
         self.assertEqual(rows_data["rows"][0]["containerCell"], "A3")
 
+    def test_target_column_cannot_overlap_source_column(self) -> None:
+        response = self.request(
+            "build_import_rows",
+            {
+                "filePath": str(SAMPLES / "m1-standard.xlsx"),
+                "sheetName": "问题反馈",
+                "headerRow": 2,
+                "sourceColumn": 3,
+                "targetColumn": 3,
+                "containerColumn": 1,
+            },
+        )
+
+        self.assertEqual(response["type"], "error")
+        self.assertEqual(response["error"]["code"], "TARGET_COLUMN_INVALID")
+
     def test_risky_workbook_is_restricted(self) -> None:
         response = self.request(
             "parse_workbook",

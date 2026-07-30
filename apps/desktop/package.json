@@ -1,6 +1,6 @@
 {
   "name": "@rus-trade/desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "中俄贸易文件助手桌面端",
   "main": "./out/main/index.js",

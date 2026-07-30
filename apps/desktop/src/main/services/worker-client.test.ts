@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -139,6 +140,87 @@ describe('WorkerClient', () => {
       expect(listed.type).toBe('completed');
       if (listed.type === 'completed') {
         expect(listed.data.tasks[0].taskId).toBe(created.data.task.taskId);
+      }
+    } finally {
+      workerClient.stop();
+    }
+  });
+  it('preflights and exports a verified Excel copy', async () => {
+    const dataDirectory = join(
+      workerTestDataRoot,
+      `vitest-${randomUUID()}`,
+    );
+    const workerClient = new WorkerClient(
+      workerEntry,
+      pythonExecutable,
+      dataDirectory,
+    );
+
+    try {
+      const created = await workerClient.createTranslationTask(
+        standardWorkbook,
+        {
+          sheetName: '问题反馈',
+          headerRow: 2,
+          sourceColumn: 3,
+          containerColumn: 1,
+          targetColumn: 4,
+          sourceLanguage: 'ru',
+          targetLanguage: 'zh-CN',
+        },
+      );
+      expect(created.type).toBe('completed');
+      if (created.type !== 'completed') {
+        return;
+      }
+
+      const { taskId } = created.data.task;
+      const processed = await workerClient.processTranslationBatch({
+        taskId,
+        batchSize: 50,
+      });
+      expect(processed.type).toBe('completed');
+      if (processed.type !== 'completed') {
+        return;
+      }
+
+      const openRows = processed.data.rows.filter(
+        (row) => row.status !== 'completed',
+      );
+      const updates = await Promise.all(openRows.map((row, index) => (
+        workerClient.updateTranslationRow({
+          taskId,
+          rowId: row.rowId,
+          translation: `桌面确认译文 ${index + 1}`,
+        })
+      )));
+      expect(updates.every((response) => response.type === 'completed')).toBe(
+        true,
+      );
+
+      const preflight = await workerClient.preflightExport({ taskId });
+      expect(preflight.type).toBe('completed');
+      if (preflight.type !== 'completed') {
+        return;
+      }
+      expect(preflight.data).toMatchObject({
+        ready: true,
+        targetColumnLetter: 'D',
+        writableRows: 4,
+      });
+
+      const outputPath = join(dataDirectory, 'desktop-export.xlsx');
+      const exported = await workerClient.exportTranslationTask({
+        taskId,
+        outputPath,
+      });
+      expect(exported.type).toBe('completed');
+      if (exported.type === 'completed') {
+        expect(exported.data).toMatchObject({
+          writtenRows: 4,
+          validated: true,
+        });
+        expect(existsSync(outputPath)).toBe(true);
       }
     } finally {
       workerClient.stop();

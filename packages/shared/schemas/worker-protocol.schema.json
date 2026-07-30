@@ -13,6 +13,9 @@
     { "$ref": "#/$defs/processTranslationBatchRequest" },
     { "$ref": "#/$defs/updateTranslationRowRequest" },
     { "$ref": "#/$defs/changeTranslationTaskStateRequest" },
+    { "$ref": "#/$defs/reviewTranslationRowRequest" },
+    { "$ref": "#/$defs/preflightExportRequest" },
+    { "$ref": "#/$defs/exportTranslationTaskRequest" },
     { "$ref": "#/$defs/upsertGlossaryTermRequest" },
     { "$ref": "#/$defs/listGlossaryTermsRequest" },
     { "$ref": "#/$defs/completedResponse" },
@@ -210,6 +213,59 @@
         }
       }
     },
+    "reviewTranslationRowRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "review_translation_row" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskId", "rowId", "action"],
+          "properties": {
+            "taskId": { "type": "string", "minLength": 1 },
+            "rowId": { "type": "string", "minLength": 1 },
+            "action": { "enum": ["ignore", "restore_initial", "rematch"] }
+          }
+        }
+      }
+    },
+    "preflightExportRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "preflight_export" },
+        "payload": { "$ref": "#/$defs/taskIdPayload" }
+      }
+    },
+    "exportTranslationTaskRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": { "const": "export_translation_task" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskId", "outputPath"],
+          "properties": {
+            "taskId": { "type": "string", "minLength": 1 },
+            "outputPath": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "upsertGlossaryTermRequest": {
       "type": "object",
       "additionalProperties": false,
@@ -290,7 +346,11 @@
                 "TARGET_COLUMN_INVALID", "DATABASE_ERROR", "TASK_NOT_FOUND",
                 "TASK_ROW_NOT_FOUND", "TASK_ROWS_EMPTY", "TASK_STATE_INVALID",
                 "TRANSLATOR_UNAVAILABLE", "TRANSLATION_TIMEOUT", "TRANSLATION_OUTPUT_INVALID",
-                "TOKEN_RESTORE_FAILED"
+                "TOKEN_RESTORE_FAILED", "INITIAL_TRANSLATION_MISSING",
+                "SOURCE_FINGERPRINT_MISSING", "SOURCE_FILE_CHANGED",
+                "EXPORT_TASK_INCOMPLETE", "EXPORT_RESTRICTED", "EXPORT_PATH_INVALID",
+                "EXPORT_PATH_EXISTS", "EXPORT_CELL_MERGED", "EXPORT_WRITE_FAILED",
+                "EXPORT_VALIDATION_FAILED"
               ]
             },
             "message": { "type": "string" }

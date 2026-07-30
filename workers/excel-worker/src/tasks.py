@@ -1,4 +1,4 @@
-"""M2 离线翻译任务、术语、缓存与恢复服务。"""
+"""M2—M3 离线翻译任务、审核、术语、缓存与恢复服务。"""
 
 from __future__ import annotations
 
@@ -12,12 +12,13 @@ from typing import Any
 from uuid import uuid4
 
 from database import connect_database
+from exporter import calculate_file_fingerprint
 from translation import (
     PROTECTION_VERSION,
     ProtectionError,
     match_glossary,
 )
-from workbook import build_import_rows
+from workbook import build_import_rows, parse_workbook
 
 TRANSLATOR_ID = "glossary-manual-v1"
 DEFAULT_BATCH_SIZE = 50
@@ -25,7 +26,7 @@ MAX_BATCH_SIZE = 200
 CACHE_RETENTION_DAYS = 180
 
 
-@dataclass(frozen=True)
+@dataclass
 class TaskError(Exception):
     """可映射到稳定 Worker 错误码的任务异常。"""
 
@@ -190,6 +191,9 @@ def _serialize_task(row: sqlite3.Row) -> dict[str, Any]:
         "translatorId": row["translator_id"],
         "glossaryVersion": int(row["glossary_version"]),
         "protectionVersion": row["protection_version"],
+        "sourceFingerprintAvailable": bool(row["source_file_sha256"]),
+        "sourceRestricted": bool(row["source_restricted"]),
+        "sourceRisks": _decode_value(row["source_risks_json"]),
         "status": row["status"],
         "totalRows": total_rows,
         "pendingRows": int(row["pending_rows"]),
@@ -218,7 +222,9 @@ def _serialize_task_row(row: sqlite3.Row) -> dict[str, Any]:
         "sourceText": row["source_text"],
         "existingTarget": _decode_value(row["existing_target_json"]),
         "translation": row["translation"],
+        "initialTranslation": row["initial_translation"],
         "candidateSource": row["candidate_source"],
+        "initialCandidateSource": row["initial_candidate_source"],
         "status": row["status"],
         "errorCode": row["error_code"],
         "userModified": bool(row["user_modified"]),
@@ -295,6 +301,8 @@ def create_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
     if import_result["totalRows"] == 0:
         raise TaskError("TASK_ROWS_EMPTY", "没有可建立任务的原文数据")
 
+    source_summary = parse_workbook(file_path)
+    fingerprint = calculate_file_fingerprint(file_path)
     task_id = str(uuid4())
     created_at = _now()
     with connect_database() as connection:
@@ -331,6 +339,23 @@ def create_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
                 created_at,
             ),
         )
+        connection.execute(
+            """
+            UPDATE tasks
+            SET source_file_sha256 = ?, source_file_size_bytes = ?,
+                source_file_mtime_ns = ?, source_restricted = ?,
+                source_risks_json = ?
+            WHERE id = ?
+            """,
+            (
+                fingerprint["sha256"],
+                fingerprint["sizeBytes"],
+                fingerprint["mtimeNs"],
+                int(source_summary["restricted"]),
+                _encode_value(source_summary["risks"]),
+                task_id,
+            ),
+        )
         for item in import_result["rows"]:
             existing_target = item["existingTarget"]
             has_existing_target = (
@@ -364,6 +389,16 @@ def create_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
                     created_at,
                 ),
             )
+            if has_existing_target:
+                connection.execute(
+                    """
+                    UPDATE task_rows
+                    SET initial_translation = ?,
+                        initial_candidate_source = 'existing'
+                    WHERE task_id = ? AND row_id = ?
+                    """,
+                    (str(existing_target), task_id, item["rowId"]),
+                )
         _refresh_task(connection, task_id, "draft")
         return _task_detail(connection, task_id)
 
@@ -513,6 +548,66 @@ def _save_cache(
     )
 
 
+def _match_translation_row(
+    connection: sqlite3.Connection,
+    task: sqlite3.Row,
+    row: sqlite3.Row,
+    terms: list[dict[str, Any]],
+    reset_initial: bool = False,
+) -> None:
+    translation: str | None = None
+    candidate_source: str | None = None
+    status = "needs_manual"
+    error_code: str | None = None
+    try:
+        translation = _lookup_cache(connection, row["source_text"], task)
+        if translation is not None:
+            candidate_source = "cache"
+            status = "candidate"
+        else:
+            translation = match_glossary(row["source_text"], terms)
+            if translation is not None:
+                candidate_source = "glossary"
+                status = "candidate"
+            else:
+                candidate_source = "manual"
+    except ProtectionError:
+        status = "failed"
+        error_code = "TOKEN_RESTORE_FAILED"
+
+    initial_translation = (
+        translation
+        if reset_initial or row["initial_translation"] is None
+        else row["initial_translation"]
+    )
+    initial_candidate_source = (
+        candidate_source
+        if reset_initial or row["initial_candidate_source"] is None
+        else row["initial_candidate_source"]
+    )
+    connection.execute(
+        """
+        UPDATE task_rows
+        SET translation = ?, initial_translation = ?,
+            candidate_source = ?, initial_candidate_source = ?,
+            status = ?, error_code = ?, user_modified = 0,
+            updated_at = ?
+        WHERE task_id = ? AND row_id = ?
+        """,
+        (
+            translation,
+            initial_translation,
+            candidate_source,
+            initial_candidate_source,
+            status,
+            error_code,
+            _now(),
+            task["id"],
+            row["row_id"],
+        ),
+    )
+
+
 def process_translation_batch(payload: dict[str, Any]) -> dict[str, Any]:
     """同步处理一个小批次，供 Renderer 在批次之间实现可靠暂停。"""
 
@@ -559,50 +654,7 @@ def process_translation_batch(payload: dict[str, Any]) -> dict[str, Any]:
         ).fetchall()
 
         for row in rows:
-            translation: str | None = None
-            candidate_source: str | None = None
-            status = "needs_manual"
-            error_code: str | None = None
-            try:
-                translation = _lookup_cache(
-                    connection,
-                    row["source_text"],
-                    task,
-                )
-                if translation is not None:
-                    candidate_source = "cache"
-                    status = "candidate"
-                else:
-                    translation = match_glossary(row["source_text"], terms)
-                    if translation is not None:
-                        candidate_source = "glossary"
-                        status = "candidate"
-                    else:
-                        candidate_source = "manual"
-            except ProtectionError:
-                status = "failed"
-                error_code = "TOKEN_RESTORE_FAILED"
-
-            connection.execute(
-                """
-                UPDATE task_rows
-                SET translation = ?,
-                    candidate_source = ?,
-                    status = ?,
-                    error_code = ?,
-                    updated_at = ?
-                WHERE task_id = ? AND row_id = ?
-                """,
-                (
-                    translation,
-                    candidate_source,
-                    status,
-                    error_code,
-                    _now(),
-                    task_id,
-                    row["row_id"],
-                ),
-            )
+            _match_translation_row(connection, task, row, terms)
 
         _refresh_task(connection, task_id)
         return _task_detail(connection, task_id)
@@ -661,6 +713,110 @@ def update_translation_row(payload: dict[str, Any]) -> dict[str, Any]:
         )
         if save_to_cache:
             _save_cache(connection, row["source_text"], translation, task)
+        _refresh_task(connection, task_id)
+        return _task_detail(connection, task_id)
+
+
+def review_translation_row(payload: dict[str, Any]) -> dict[str, Any]:
+    """执行忽略、恢复初始候选或单行离线重新匹配。"""
+
+    task_id = _require_text(
+        payload.get("taskId"),
+        "INVALID_MESSAGE",
+        "任务 ID 不能为空",
+    )
+    row_id = _require_text(
+        payload.get("rowId"),
+        "INVALID_MESSAGE",
+        "行任务 ID 不能为空",
+    )
+    action = _require_text(
+        payload.get("action"),
+        "INVALID_MESSAGE",
+        "审核操作不能为空",
+    )
+    if action not in {"ignore", "restore_initial", "rematch"}:
+        raise TaskError("INVALID_MESSAGE", "不支持的审核操作")
+
+    with connect_database() as connection:
+        task = connection.execute(
+            "SELECT * FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if task is None:
+            raise TaskError("TASK_NOT_FOUND", "翻译任务不存在")
+        if task["status"] == "cancelled":
+            raise TaskError("TASK_STATE_INVALID", "已中止任务不能审核")
+        row = connection.execute(
+            """
+            SELECT * FROM task_rows
+            WHERE task_id = ? AND row_id = ?
+            """,
+            (task_id, row_id),
+        ).fetchone()
+        if row is None:
+            raise TaskError("TASK_ROW_NOT_FOUND", "翻译任务行不存在")
+
+        if action == "ignore":
+            connection.execute(
+                """
+                UPDATE task_rows
+                SET status = 'ignored', error_code = NULL,
+                    user_modified = 1, updated_at = ?
+                WHERE task_id = ? AND row_id = ?
+                """,
+                (_now(), task_id, row_id),
+            )
+        elif action == "restore_initial":
+            initial_translation = row["initial_translation"]
+            initial_source = row["initial_candidate_source"]
+            if not initial_translation or not initial_source:
+                raise TaskError(
+                    "INITIAL_TRANSLATION_MISSING",
+                    "该行没有可恢复的初始候选",
+                )
+            restored_status = (
+                "completed" if initial_source == "existing" else "candidate"
+            )
+            connection.execute(
+                """
+                UPDATE task_rows
+                SET translation = ?, candidate_source = ?, status = ?,
+                    error_code = NULL, user_modified = 0, updated_at = ?
+                WHERE task_id = ? AND row_id = ?
+                """,
+                (
+                    initial_translation,
+                    initial_source,
+                    restored_status,
+                    _now(),
+                    task_id,
+                    row_id,
+                ),
+            )
+        else:
+            glossary_version = _get_glossary_version(connection)
+            connection.execute(
+                """
+                UPDATE tasks
+                SET glossary_version = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (glossary_version, _now(), task_id),
+            )
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+            terms = _load_glossary_terms(connection)
+            _match_translation_row(
+                connection,
+                task,
+                row,
+                terms,
+                reset_initial=True,
+            )
+
         _refresh_task(connection, task_id)
         return _task_detail(connection, task_id)
 

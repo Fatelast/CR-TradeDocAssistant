@@ -8,10 +8,14 @@ import {
   type ChangeTranslationTaskStateRequest,
   type CreateTranslationTaskRequest,
   type DesktopApi,
+  type ExportPreflightRequest,
+  type ExportPreflightResult,
   type ImportRowsResult,
   IPC_CHANNELS,
   type ListTranslationTasksRequest,
   type ProcessTranslationBatchRequest,
+  type ReviewTranslationRowRequest,
+  type TranslationExportSelectionResult,
   type TranslationTaskDetail,
   type TranslationTaskIdRequest,
   type TranslationTaskListResult,
@@ -93,6 +97,24 @@ const desktopApi: DesktopApi = {
       IPC_CHANNELS.changeTranslationTaskState,
       request,
     ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  reviewTranslationRow: (request: ReviewTranslationRowRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.reviewTranslationRow,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  preflightExport: (request: ExportPreflightRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.preflightExport,
+      request,
+    ) as Promise<WorkerResponse<ExportPreflightResult>>
+  ),
+  exportTranslationTask: (request: ExportPreflightRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.exportTranslationTask,
+      request,
+    ) as Promise<TranslationExportSelectionResult>
   ),
 };
 

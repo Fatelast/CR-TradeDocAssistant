@@ -1,7 +1,7 @@
 # 中俄贸易文件助手｜IPC 与 Worker 协议
 
 > 协议版本：`1.0`
-> 应用里程碑：`0.3.0 / M2`
+> 应用里程碑：`0.4.0 / M3`
 > 适用范围：M0—V1 单 Worker 模式
 
 ## 1. 调用链路
@@ -32,7 +32,10 @@ Renderer 不接触 `ipcRenderer`、文件系统、SQLite、Python 路径或子�
 | `translation:list-tasks` | `listTranslationTasks(request)` | 完成态开关、数量上限 | 默认读取未完成任务 |
 | `translation:process-batch` | `processTranslationBatch(request)` | `taskId`、可选批次大小 | 执行缓存/术语离线匹配 |
 | `translation:update-row` | `updateTranslationRow(request)` | 行 ID、译文、缓存开关 | 人工确认译文 |
+| `translation:review-row` | `reviewTranslationRow(request)` | 任务 ID、行 ID、审核动作 | 忽略、恢复初始候选或离线重新匹配 |
 | `translation:change-state` | `changeTranslationTaskState(request)` | 任务 ID、状态动作 | 暂停、恢复、中止、重试失败项 |
+| `export:preflight` | `preflightExport(request)` | `taskId` | 完成度、指纹、风险与目标列预检 |
+| `export:select-and-run` | `exportTranslationTask(request)` | `taskId` | Main 原生选择目标路径并执行安全导出 |
 
 Main 同时只保留一个活动工作簿会话。文件被更换或应用重启后，旧 `workbookId` 返回 `WORKBOOK_SESSION_INVALID`；已创建任务通过 `taskId` 从 SQLite 恢复，不依赖活动会话继续存在。
 
@@ -76,7 +79,10 @@ Main 同时只保留一个活动工作簿会话。文件被更换或应用重启
 | `list_translation_tasks` | 可选过滤条件 | 任务摘要列表 |
 | `process_translation_batch` | `taskId`、可选批次大小 | 批次后的完整任务明细 |
 | `update_translation_row` | 任务行、译文、缓存开关 | 人工确认后的完整任务明细 |
+| `review_translation_row` | 任务行、审核动作 | 忽略、恢复或重新匹配后的完整任务明细 |
 | `change_translation_task_state` | `taskId`、状态动作 | 状态变更后的完整任务明细 |
+| `preflight_export` | `taskId` | 指纹、风险、目标列与计划写入摘要 |
+| `export_translation_task` | `taskId`、可信输出路径 | 输出路径、SHA-256、写入与跳过数量 |
 | `upsert_glossary_term` | 俄文、中文、可选备注 | 术语及新术语库版本 |
 | `list_glossary_terms` | 无 | 当前有效术语列表 |
 
@@ -84,7 +90,7 @@ Main 同时只保留一个活动工作簿会话。文件被更换或应用重启
 
 ## 5. 稳定错误码
 
-除 M1 的文件、工作簿、会话和列配置错误外，M2 新增：
+除 M1 的文件、工作簿、会话和列配置错误外，M2—M3 新增：
 
 | 错误码 | 含义 |
 |---|---|
@@ -96,10 +102,19 @@ Main 同时只保留一个活动工作簿会话。文件被更换或应用重启
 | `TRANSLATION_TIMEOUT` | 翻译处理超时 |
 | `TRANSLATION_OUTPUT_INVALID` | 译文为空或输出结构无效 |
 | `TOKEN_RESTORE_FAILED` | 保护片段缺失、重复或未完全恢复 |
+| `INITIAL_TRANSLATION_MISSING` | 当前行没有可恢复的初始候选 |
+| `SOURCE_FINGERPRINT_MISSING` | 旧任务缺少源文件指纹，必须重新创建任务 |
+| `SOURCE_FILE_CHANGED` | 源文件内容或大小已变化 |
+| `EXPORT_TASK_INCOMPLETE` | 仍有未确认或失败行 |
+| `EXPORT_RESTRICTED` | 工作簿风险超出安全导出边界 |
+| `EXPORT_PATH_INVALID` / `EXPORT_PATH_EXISTS` | 输出路径无效、等于原文件或已经存在 |
+| `EXPORT_CELL_MERGED` | 目标单元格位于不可写合并区域 |
+| `EXPORT_WRITE_FAILED` | 临时文件写入失败 |
+| `EXPORT_VALIDATION_FAILED` | 输出重开或逐格校验失败 |
 
 未分类异常仍返回 `WORKER_INTERNAL_ERROR`，且日志不得记录完整业务原文、译文或请求体。
 
-## 6. M2 安全与一致性约束
+## 6. M3 安全与一致性约束
 
 - BrowserWindow 使用 `contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`；
 - 权限请求、新窗口和任意导航默认拒绝；
@@ -108,4 +123,7 @@ Main 同时只保留一个活动工作簿会话。文件被更换或应用重启
 - 可通过 `RUS_TRADE_DATA_DIR` 隔离开发或测试数据；
 - 已有译文不自动覆盖；缓存和术语命中只产生人工确认候选；
 - 当前不启用在线翻译，不向外部服务发送文件或业务数据；
-- 当前不写回或导出原 Excel。
+- Renderer 无权提供输出路径，Main 只接受原生另存为对话框返回的 `.xlsx` 路径；
+- 导出前必须复核任务完成度、源文件 SHA-256 和当前工作簿风险；
+- Worker 只写入同目录临时文件，重开逐格验证后才生成最终副本；
+- 禁止覆盖原文件或已存在文件，受限工作簿不得导出。

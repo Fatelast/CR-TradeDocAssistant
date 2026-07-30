@@ -480,6 +480,16 @@ def build_import_rows(
         "TARGET_COLUMN_INVALID",
         "译文列无效",
     )
+    if target == source:
+        raise WorkbookError(
+            "TARGET_COLUMN_INVALID",
+            "译文列不能与原文列相同",
+        )
+    if target is not None and target == container:
+        raise WorkbookError(
+            "TARGET_COLUMN_INVALID",
+            "译文列不能与箱号列相同",
+        )
 
     workbook = _open_workbook(path)
     try:

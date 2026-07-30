@@ -73,7 +73,7 @@ draft → running → awaiting_manual → completed
 - Electron WorkerClient：3 项跨进程 JSON Lines 测试通过；
 - 覆盖 SQLite 迁移、内置术语、任务状态、缓存命中、重启恢复、暂停/恢复/中止和保护片段往返；
 - `npm run typecheck`、`npm run lint` 通过；
-- 生产构建和真实 Electron 界面验收结果在本阶段收尾后补充。
+- 当前 M3 回归已覆盖生产构建和真实 Electron 审核界面，详见 `m3-review-export.md`。
 
 ## M3 继续开发时的约束
 

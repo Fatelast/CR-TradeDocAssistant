@@ -8,14 +8,19 @@ import { createInterface, type Interface } from 'node:readline';
 import {
   type ChangeTranslationTaskStateRequest,
   type CreateTranslationTaskRequest,
+  type ExportPreflightRequest,
+  type ExportPreflightResult,
   type ImportRowsResult,
   type ListTranslationTasksRequest,
   type ProcessTranslationBatchRequest,
+  type ReviewTranslationRowRequest,
   PROTOCOL_VERSION,
   type TranslationTaskDetail,
+  type TranslationExportResult,
   type TranslationTaskListResult,
   type UpdateTranslationRowRequest,
   type WorkerAction,
+  type WorkerExportTranslationTaskRequest,
   type WorkerInfo,
   type WorkerRequest,
   type WorkerResponse,
@@ -174,6 +179,35 @@ export class WorkerClient {
     return this.request<TranslationTaskDetail>(
       WORKER_ACTIONS.changeTranslationTaskState,
       { ...request },
+    );
+  }
+
+  async reviewTranslationRow(
+    request: ReviewTranslationRowRequest,
+  ): Promise<WorkerResponse<TranslationTaskDetail>> {
+    return this.request<TranslationTaskDetail>(
+      WORKER_ACTIONS.reviewTranslationRow,
+      { ...request },
+    );
+  }
+
+  async preflightExport(
+    request: ExportPreflightRequest,
+  ): Promise<WorkerResponse<ExportPreflightResult>> {
+    return this.request<ExportPreflightResult>(
+      WORKER_ACTIONS.preflightExport,
+      { ...request },
+      30_000,
+    );
+  }
+
+  async exportTranslationTask(
+    request: WorkerExportTranslationTaskRequest,
+  ): Promise<WorkerResponse<TranslationExportResult>> {
+    return this.request<TranslationExportResult>(
+      WORKER_ACTIONS.exportTranslationTask,
+      { ...request },
+      60_000,
     );
   }
 

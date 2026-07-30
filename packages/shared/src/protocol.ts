@@ -20,6 +20,9 @@ export const IPC_CHANNELS = {
   processTranslationBatch: 'translation:process-batch',
   updateTranslationRow: 'translation:update-row',
   changeTranslationTaskState: 'translation:change-state',
+  reviewTranslationRow: 'translation:review-row',
+  preflightExport: 'export:preflight',
+  exportTranslationTask: 'export:select-and-run',
 } as const
 
 export const WORKER_ACTIONS = {
@@ -33,6 +36,9 @@ export const WORKER_ACTIONS = {
   processTranslationBatch: 'process_translation_batch',
   updateTranslationRow: 'update_translation_row',
   changeTranslationTaskState: 'change_translation_task_state',
+  reviewTranslationRow: 'review_translation_row',
+  preflightExport: 'preflight_export',
+  exportTranslationTask: 'export_translation_task',
   upsertGlossaryTerm: 'upsert_glossary_term',
   listGlossaryTerms: 'list_glossary_terms',
 } as const
@@ -72,6 +78,16 @@ export type WorkerErrorCode =
   | 'TRANSLATION_TIMEOUT'
   | 'TRANSLATION_OUTPUT_INVALID'
   | 'TOKEN_RESTORE_FAILED'
+  | 'INITIAL_TRANSLATION_MISSING'
+  | 'SOURCE_FINGERPRINT_MISSING'
+  | 'SOURCE_FILE_CHANGED'
+  | 'EXPORT_TASK_INCOMPLETE'
+  | 'EXPORT_RESTRICTED'
+  | 'EXPORT_PATH_INVALID'
+  | 'EXPORT_PATH_EXISTS'
+  | 'EXPORT_CELL_MERGED'
+  | 'EXPORT_WRITE_FAILED'
+  | 'EXPORT_VALIDATION_FAILED'
 
 export interface WorkerRequest<
   TAction extends WorkerAction = WorkerAction,
@@ -249,6 +265,9 @@ export interface TranslationTaskSummary {
   translatorId: string
   glossaryVersion: number
   protectionVersion: string
+  sourceFingerprintAvailable: boolean
+  sourceRestricted: boolean
+  sourceRisks: WorkbookRisk[]
   status: TranslationTaskStatus
   totalRows: number
   pendingRows: number
@@ -271,7 +290,9 @@ export interface TranslationTaskRow {
   sourceText: string
   existingTarget: CellValue
   translation: string | null
+  initialTranslation: string | null
   candidateSource: TranslationCandidateSource | null
+  initialCandidateSource: TranslationCandidateSource | null
   status: TranslationRowStatus
   errorCode: WorkerErrorCode | null
   userModified: boolean
@@ -311,6 +332,57 @@ export interface UpdateTranslationRowRequest {
 export interface ChangeTranslationTaskStateRequest {
   taskId: string
   action: 'pause' | 'resume' | 'cancel' | 'retry_failed'
+}
+
+export interface ReviewTranslationRowRequest {
+  taskId: string
+  rowId: string
+  action: 'ignore' | 'restore_initial' | 'rematch'
+}
+
+export interface ExportPreflightRequest {
+  taskId: string
+}
+
+export interface ExportPreflightResult {
+  taskId: string
+  ready: true
+  sourceFilePath: string
+  sourceFileName: string
+  sourceSha256: string
+  sheetName: string
+  targetColumn: number
+  targetColumnLetter: string
+  createsTargetColumn: boolean
+  writableRows: number
+  unchangedRows: number
+  ignoredRows: number
+  suggestedFileName: string
+  risks: WorkbookRisk[]
+}
+
+export interface WorkerExportTranslationTaskRequest {
+  taskId: string
+  outputPath: string
+}
+
+export interface TranslationExportResult {
+  taskId: string
+  outputPath: string
+  outputFileName: string
+  outputSha256: string
+  sheetName: string
+  targetColumn: number
+  targetColumnLetter: string
+  createdTargetColumn: boolean
+  writtenRows: number
+  skippedRows: number
+  validated: boolean
+}
+
+export interface TranslationExportSelectionResult {
+  cancelled: boolean
+  response?: WorkerResponse<TranslationExportResult>
 }
 
 export interface WorkerCompletedResponse<TData = unknown> {
@@ -362,4 +434,13 @@ export interface DesktopApi {
   changeTranslationTaskState: (
     request: ChangeTranslationTaskStateRequest,
   ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  reviewTranslationRow: (
+    request: ReviewTranslationRowRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  preflightExport: (
+    request: ExportPreflightRequest,
+  ) => Promise<WorkerResponse<ExportPreflightResult>>
+  exportTranslationTask: (
+    request: ExportPreflightRequest,
+  ) => Promise<TranslationExportSelectionResult>
 }

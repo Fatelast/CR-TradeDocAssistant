@@ -74,14 +74,26 @@ const previewRows = computed(() => preview.value?.rows ?? []);
 const generatedPreviewRows = computed(() => (
   generatedRows.value?.rows.slice(0, 20) ?? []
 ));
-const stageKicker = computed(() => (
-  activeTask.value
-    ? 'M2 · OFFLINE TRANSLATION'
-    : 'M1 · WORKBOOK INTAKE'
+const isReviewStage = computed(() => (
+  Boolean(activeTask.value)
+  && activeTask.value?.task.pendingRows === 0
 ));
-const stageTitle = computed(() => (
-  activeTask.value ? t('离线翻译任务') : t('Excel 结构预检')
-));
+const stageKicker = computed(() => {
+  if (!activeTask.value) {
+    return 'M1 · WORKBOOK INTAKE';
+  }
+  return isReviewStage.value
+    ? 'M3 · REVIEW & VERIFIED EXPORT'
+    : 'M2 · OFFLINE TRANSLATION';
+});
+const stageTitle = computed(() => {
+  if (!activeTask.value) {
+    return t('Excel 结构预检');
+  }
+  return isReviewStage.value
+    ? t('翻译审核与安全导出')
+    : t('离线翻译任务');
+});
 
 const clearError = (): void => {
   errorCode.value = undefined;
@@ -111,7 +123,7 @@ const runDiagnostic = async (): Promise<void> => {
 
 const loadRecentTasks = async (): Promise<void> => {
   const response = await window.tradeAssistant.listTranslationTasks({
-    includeCompleted: false,
+    includeCompleted: true,
     limit: 8,
   });
   if (response.type === 'error') {
@@ -316,7 +328,7 @@ onMounted(() => {
           </p>
           <h1>{{ t('中俄贸易文件助手') }}</h1>
           <p class="brand-subtitle">
-            {{ t('Excel 导入与离线翻译工作台') }}
+            {{ t('Excel 导入、离线翻译与审核导出工作台') }}
           </p>
         </div>
       </div>
@@ -327,7 +339,7 @@ onMounted(() => {
           :class="`status-dot--${diagnosticStatus}`"
         />
         <div>
-          <small>{{ t('系统基线') }} · M2</small>
+          <small>{{ t('系统基线') }} · M3</small>
           <strong>{{ diagnosticCaption }}</strong>
         </div>
         <code>{{ workerInfo?.workerVersion ?? '—' }}</code>
@@ -359,11 +371,18 @@ onMounted(() => {
               <small>ROW MAPPING</small>
             </div>
           </li>
-          <li :class="{ active: activeTask }">
+          <li :class="{ active: activeTask && !isReviewStage }">
             <span>04</span>
             <div>
               <strong>{{ t('离线翻译') }}</strong>
               <small>GLOSSARY / MANUAL</small>
+            </div>
+          </li>
+          <li :class="{ active: isReviewStage }">
+            <span>05</span>
+            <div>
+              <strong>{{ t('审核导出') }}</strong>
+              <small>REVIEW / VERIFIED XLSX</small>
             </div>
           </li>
         </ol>
@@ -398,7 +417,7 @@ onMounted(() => {
           class="resume-shelf"
         >
           <div>
-            <span>{{ t('本机未完成任务') }}</span>
+            <span>{{ t('本机最近任务') }}</span>
             <strong>{{ recentTasks.length }}</strong>
           </div>
           <button
@@ -693,8 +712,8 @@ onMounted(() => {
     </div>
 
     <footer class="workspace-footer">
-      <span>RUS-TRADE-FILE-ASSISTANT / M2</span>
-      <span>LOCAL TASK DB · OFFLINE TRANSLATOR · PROTOCOL 1.0</span>
+      <span>RUS-TRADE-FILE-ASSISTANT / M3</span>
+      <span>REVIEW LEDGER · VERIFIED XLSX · PROTOCOL 1.0</span>
     </footer>
   </main>
 </template>

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import {
+  dirname,
   extname,
   join,
   resolve,
@@ -16,10 +18,13 @@ import {
   type BuildWorkbookRowsRequest,
   type ChangeTranslationTaskStateRequest,
   type CreateTranslationTaskRequest,
+  type ExportPreflightRequest,
   IPC_CHANNELS,
   type ListTranslationTasksRequest,
   type ProcessTranslationBatchRequest,
+  type ReviewTranslationRowRequest,
   PROTOCOL_VERSION,
+  type TranslationExportSelectionResult,
   type TranslationTaskIdRequest,
   type UpdateTranslationRowRequest,
   type WorkbookSelectionResult,
@@ -460,6 +465,148 @@ const registerTranslationIpc = (): void => {
           : 'WORKER_START_FAILED';
         logError(`Change translation task state failed: ${message}`);
         return createLocalError(mapWorkerErrorCode(message), '无法更新任务状态');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewTranslationRow,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '审核操作请求无效');
+      }
+      const request = rawRequest as Partial<ReviewTranslationRowRequest>;
+      if (
+        typeof request.taskId !== 'string'
+        || typeof request.rowId !== 'string'
+        || !['ignore', 'restore_initial', 'rematch'].includes(
+          request.action ?? '',
+        )
+      ) {
+        return createLocalError('INVALID_MESSAGE', '审核操作参数无效');
+      }
+
+      try {
+        return await workerClient?.reviewTranslationRow({
+          taskId: request.taskId,
+          rowId: request.rowId,
+          action: request.action as ReviewTranslationRowRequest['action'],
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Review translation row failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '无法更新审核状态');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.preflightExport,
+    async (_event, rawRequest: unknown) => {
+      if (!isRecord(rawRequest)) {
+        return createLocalError('INVALID_MESSAGE', '导出预检请求无效');
+      }
+      const request = rawRequest as Partial<ExportPreflightRequest>;
+      if (typeof request.taskId !== 'string') {
+        return createLocalError('INVALID_MESSAGE', '任务 ID 无效');
+      }
+
+      try {
+        return await workerClient?.preflightExport({
+          taskId: request.taskId,
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Export preflight failed: ${message}`);
+        return createLocalError(mapWorkerErrorCode(message), '导出预检失败');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.exportTranslationTask,
+    async (_event, rawRequest: unknown): Promise<TranslationExportSelectionResult> => {
+      if (!isRecord(rawRequest)) {
+        return {
+          cancelled: false,
+          response: createLocalError('INVALID_MESSAGE', '导出请求无效'),
+        };
+      }
+      const request = rawRequest as Partial<ExportPreflightRequest>;
+      if (typeof request.taskId !== 'string') {
+        return {
+          cancelled: false,
+          response: createLocalError('INVALID_MESSAGE', '任务 ID 无效'),
+        };
+      }
+
+      try {
+        const preflight = await workerClient?.preflightExport({
+          taskId: request.taskId,
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+        if (preflight.type === 'error') {
+          return { cancelled: false, response: preflight };
+        }
+
+        const selection = await dialog.showSaveDialog({
+          title: '导出 Excel 翻译副本',
+          buttonLabel: '导出并校验',
+          defaultPath: join(
+            dirname(preflight.data.sourceFilePath),
+            preflight.data.suggestedFileName,
+          ),
+          filters: [
+            {
+              name: 'Excel 工作簿',
+              extensions: ['xlsx'],
+            },
+          ],
+        });
+        if (selection.canceled || !selection.filePath) {
+          return { cancelled: true };
+        }
+
+        const outputPath = resolve(selection.filePath);
+        if (extname(outputPath).toLowerCase() !== '.xlsx') {
+          return {
+            cancelled: false,
+            response: createLocalError(
+              'EXPORT_PATH_INVALID',
+              '输出文件必须使用 .xlsx 扩展名',
+            ),
+          };
+        }
+        if (existsSync(outputPath)) {
+          return {
+            cancelled: false,
+            response: createLocalError(
+              'EXPORT_PATH_EXISTS',
+              '输出文件已存在，请重新命名',
+            ),
+          };
+        }
+
+        const response = await workerClient?.exportTranslationTask({
+          taskId: request.taskId,
+          outputPath,
+        }) ?? createLocalError('WORKER_START_FAILED', 'Worker 未初始化');
+        return { cancelled: false, response };
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'WORKER_START_FAILED';
+        logError(`Export translation task failed: ${message}`);
+        return {
+          cancelled: false,
+          response: createLocalError(
+            mapWorkerErrorCode(message),
+            '无法导出 Excel 翻译副本',
+          ),
+        };
       }
     },
   );
