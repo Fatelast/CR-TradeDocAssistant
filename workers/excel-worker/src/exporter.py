@@ -1,4 +1,4 @@
-"""M3 翻译任务导出预检与 Excel 安全写回。"""
+"""M3—M4 翻译任务导出预检、安全写回与导出历史。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import os
 from copy import copy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -320,6 +320,24 @@ def _validate_output(temp_path: Path, sheet_name: str, written) -> None:
         workbook.close()
 
 
+def _mark_export_failed(export_id: str, error_code: str) -> None:
+    with connect_database() as connection:
+        connection.execute(
+            """
+            UPDATE task_exports
+            SET status = 'failed', error_code = ?, completed_at = ?
+            WHERE id = ?
+            """,
+            (
+                error_code,
+                datetime.now(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat(),
+                export_id,
+            ),
+        )
+
+
 def export_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
     """写入临时副本，重新打开校验后再生成最终 Excel 文件。"""
 
@@ -332,11 +350,38 @@ def export_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
 
     source_path = Path(task["source_file_path"]).resolve()
     output_path = _resolve_output_path(payload.get("outputPath"), source_path)
+    export_id = str(uuid4())
+    created_at = (
+        datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    )
+    with connect_database() as connection:
+        connection.execute(
+            """
+            INSERT INTO task_exports(
+                id, task_id, output_file_path, output_file_name, status,
+                sheet_name, target_column, target_column_letter,
+                created_target_column, created_at
+            ) VALUES(?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+            """,
+            (
+                export_id,
+                task_id,
+                str(output_path),
+                output_path.name,
+                task["sheet_name"],
+                preflight["targetColumn"],
+                preflight["targetColumnLetter"],
+                int(preflight["createsTargetColumn"]),
+                created_at,
+            ),
+        )
+
     temp_path = output_path.with_name(
         f".{output_path.stem}.{uuid4().hex}.tmp.xlsx"
     )
-
     workbook = None
+    written: list[tuple[str, str]] = []
+    skipped_rows = 0
     try:
         workbook = load_workbook(
             source_path,
@@ -355,16 +400,23 @@ def export_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
         workbook = None
         _validate_output(temp_path, task["sheet_name"], written)
         temp_path.replace(output_path)
-    except ExportError:
+    except ExportError as error:
+        _mark_export_failed(export_id, error.code)
         raise
     except PermissionError as error:
+        _mark_export_failed(export_id, "EXPORT_WRITE_FAILED")
         raise ExportError(
             "EXPORT_WRITE_FAILED",
             "输出文件或目录不可写",
         ) from error
     except OSError as error:
-        raise ExportError("EXPORT_WRITE_FAILED", "写入输出文件失败") from error
+        _mark_export_failed(export_id, "EXPORT_WRITE_FAILED")
+        raise ExportError(
+            "EXPORT_WRITE_FAILED",
+            "写入输出文件失败",
+        ) from error
     except Exception as error:
+        _mark_export_failed(export_id, "EXPORT_WRITE_FAILED")
         raise ExportError(
             "EXPORT_WRITE_FAILED",
             "生成 Excel 副本失败",
@@ -376,7 +428,28 @@ def export_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
             temp_path.unlink(missing_ok=True)
 
     output_fingerprint = calculate_file_fingerprint(output_path)
+    completed_at = (
+        datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    )
+    with connect_database() as connection:
+        connection.execute(
+            """
+            UPDATE task_exports
+            SET output_file_sha256 = ?, status = 'completed',
+                written_rows = ?, skipped_rows = ?, validated = 1,
+                error_code = NULL, completed_at = ?
+            WHERE id = ?
+            """,
+            (
+                output_fingerprint["sha256"],
+                len(written),
+                skipped_rows,
+                completed_at,
+                export_id,
+            ),
+        )
     return {
+        "exportId": export_id,
         "taskId": task_id,
         "outputPath": str(output_path),
         "outputFileName": output_path.name,

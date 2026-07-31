@@ -15,6 +15,7 @@ import {
   session,
 } from 'electron';
 import {
+  type AppSettings,
   type BuildWorkbookRowsRequest,
   type ChangeTranslationTaskStateRequest,
   type CreateTranslationTaskRequest,
@@ -33,6 +34,7 @@ import {
   type WorkerErrorCode,
   type WorkerErrorResponse,
   type WorkerResponse,
+  WORKER_ACTIONS,
 } from '@rus-trade/shared';
 
 import {
@@ -40,7 +42,9 @@ import {
   logError,
   logInfo,
 } from './services/logger';
+import { registerM4Ipc } from './m4-ipc';
 import { WorkerClient } from './services/worker-client';
+import { resolveWorkerProcess } from './services/worker-runtime';
 
 interface ActiveWorkbook {
   id: string;
@@ -74,22 +78,6 @@ const mapWorkerErrorCode = (message: string): WorkerErrorCode => {
   }
 
   return 'WORKER_START_FAILED';
-};
-
-const resolveWorkerEntry = (): string => {
-  if (app.isPackaged) {
-    return join(process.resourcesPath, 'worker', 'main.py');
-  }
-
-  return join(
-    app.getAppPath(),
-    '..',
-    '..',
-    'workers',
-    'excel-worker',
-    'src',
-    'main.py',
-  );
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -552,11 +540,22 @@ const registerTranslationIpc = (): void => {
           return { cancelled: false, response: preflight };
         }
 
+        let outputDirectory = dirname(preflight.data.sourceFilePath);
+        const settings = await workerClient?.runAction<AppSettings>(
+          WORKER_ACTIONS.getAppSettings,
+        );
+        if (
+          settings?.type === 'completed'
+          && settings.data.defaultOutputDirectory
+          && existsSync(settings.data.defaultOutputDirectory)
+        ) {
+          outputDirectory = settings.data.defaultOutputDirectory;
+        }
         const selection = await dialog.showSaveDialog({
           title: '导出 Excel 翻译副本',
           buttonLabel: '导出并校验',
           defaultPath: join(
-            dirname(preflight.data.sourceFilePath),
+            outputDirectory,
             preflight.data.suggestedFileName,
           ),
           filters: [
@@ -612,12 +611,13 @@ const registerTranslationIpc = (): void => {
   );
 };
 const registerWorkerIpc = (): void => {
-  const pythonExecutable = process.env.RUS_TRADE_PYTHON
-    ?? (process.platform === 'win32' ? 'python' : 'python3');
-
   workerClient = new WorkerClient(
-    resolveWorkerEntry(),
-    pythonExecutable,
+    resolveWorkerProcess({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+    }),
     process.env.RUS_TRADE_DATA_DIR ?? join(app.getPath('userData'), 'data'),
     (level, message) => {
       if (level === 'error') {
@@ -645,6 +645,7 @@ const registerWorkerIpc = (): void => {
 
   registerWorkbookIpc();
   registerTranslationIpc();
+  registerM4Ipc(workerClient);
 };
 
 const createWindow = (): void => {

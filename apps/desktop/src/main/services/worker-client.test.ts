@@ -15,13 +15,17 @@ const standardWorkbook = fileURLToPath(
 );
 const pythonExecutable = process.env.RUS_TRADE_PYTHON
   ?? (process.platform === 'win32' ? 'python' : 'python3');
+const workerProcessConfig = {
+  executable: pythonExecutable,
+  arguments: [workerEntry],
+};
 const workerTestDataRoot = fileURLToPath(
   new URL('../../../../../workers/excel-worker/.test-data', import.meta.url),
 );
 
 describe('WorkerClient', () => {
   it('returns worker information through JSON Lines', async () => {
-    const workerClient = new WorkerClient(workerEntry, pythonExecutable);
+    const workerClient = new WorkerClient(workerProcessConfig);
 
     try {
       const response = await workerClient.getWorkerInfo();
@@ -38,7 +42,7 @@ describe('WorkerClient', () => {
   });
 
   it('parses, previews, and builds stable import rows', async () => {
-    const workerClient = new WorkerClient(workerEntry, pythonExecutable);
+    const workerClient = new WorkerClient(workerProcessConfig);
 
     try {
       const workbook = await workerClient.parseWorkbook(standardWorkbook);
@@ -89,8 +93,7 @@ describe('WorkerClient', () => {
   });
   it('creates and processes a persistent offline translation task', async () => {
     const workerClient = new WorkerClient(
-      workerEntry,
-      pythonExecutable,
+      workerProcessConfig,
       join(workerTestDataRoot, `vitest-${randomUUID()}`),
     );
 
@@ -151,8 +154,7 @@ describe('WorkerClient', () => {
       `vitest-${randomUUID()}`,
     );
     const workerClient = new WorkerClient(
-      workerEntry,
-      pythonExecutable,
+      workerProcessConfig,
       dataDirectory,
     );
 

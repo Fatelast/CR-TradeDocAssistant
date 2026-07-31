@@ -18,6 +18,7 @@
     { "$ref": "#/$defs/exportTranslationTaskRequest" },
     { "$ref": "#/$defs/upsertGlossaryTermRequest" },
     { "$ref": "#/$defs/listGlossaryTermsRequest" },
+    { "$ref": "#/$defs/m4LocalDataRequest" },
     { "$ref": "#/$defs/completedResponse" },
     { "$ref": "#/$defs/errorResponse" }
   ],
@@ -301,7 +302,37 @@
         "id": { "type": "string", "minLength": 1 },
         "type": { "const": "request" },
         "action": { "const": "list_glossary_terms" },
-        "payload": { "$ref": "#/$defs/emptyPayload" }
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "page": { "type": "integer", "minimum": 1 },
+            "pageSize": { "type": "integer", "minimum": 1, "maximum": 50 },
+            "search": { "type": "string", "maxLength": 100 },
+            "category": { "type": "string", "minLength": 1 },
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "m4LocalDataRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "id", "type", "action", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "request" },
+        "action": {
+          "enum": [
+            "preflight_glossary_import", "apply_glossary_import", "export_glossary",
+            "list_task_history", "get_task_history_detail", "create_rerun_task",
+            "resolve_history_path", "recover_pending_exports", "list_translation_cache",
+            "preview_data_cleanup", "run_data_cleanup", "run_scheduled_cleanup",
+            "get_app_settings", "update_app_settings", "export_app_settings"
+          ]
+        },
+        "payload": { "type": "object" }
       }
     },
     "taskIdPayload": {
@@ -350,7 +381,11 @@
                 "SOURCE_FINGERPRINT_MISSING", "SOURCE_FILE_CHANGED",
                 "EXPORT_TASK_INCOMPLETE", "EXPORT_RESTRICTED", "EXPORT_PATH_INVALID",
                 "EXPORT_PATH_EXISTS", "EXPORT_CELL_MERGED", "EXPORT_WRITE_FAILED",
-                "EXPORT_VALIDATION_FAILED"
+                "EXPORT_VALIDATION_FAILED", "GLOSSARY_TERM_DUPLICATE",
+                "GLOSSARY_IMPORT_INVALID", "GLOSSARY_IMPORT_LIMIT_EXCEEDED",
+                "GLOSSARY_IMPORT_CHANGED", "HISTORY_TASK_NOT_FOUND",
+                "EXPORT_RECORD_NOT_FOUND", "TASK_SOURCE_RESELECT_REQUIRED",
+                "CLEANUP_PLAN_CHANGED", "SETTINGS_INVALID", "OUTPUT_DIRECTORY_UNAVAILABLE"
               ]
             },
             "message": { "type": "string" }

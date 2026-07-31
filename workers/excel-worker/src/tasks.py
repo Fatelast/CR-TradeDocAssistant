@@ -1,4 +1,4 @@
-"""M2—M3 离线翻译任务、审核、术语、缓存与恢复服务。"""
+"""M2—M4 离线翻译任务、审核、术语、缓存与恢复服务。"""
 
 from __future__ import annotations
 
@@ -79,18 +79,6 @@ def _get_glossary_version(connection: sqlite3.Connection) -> int:
         "SELECT value FROM app_meta WHERE key = 'glossary_version'"
     ).fetchone()
     return int(row["value"]) if row else 1
-
-
-def _increment_glossary_version(connection: sqlite3.Connection) -> int:
-    version = _get_glossary_version(connection) + 1
-    connection.execute(
-        """
-        INSERT INTO app_meta(key, value) VALUES('glossary_version', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        (str(version),),
-    )
-    return version
 
 
 def _task_row_counts(
@@ -201,6 +189,7 @@ def _serialize_task(row: sqlite3.Row) -> dict[str, Any]:
         "manualRows": int(row["manual_rows"]),
         "completedRows": completed_rows,
         "failedRows": int(row["failed_rows"]),
+        "rerunOfTaskId": row["rerun_of_task_id"],
         "progress": (
             round(completed_rows / total_rows, 4)
             if total_rows
@@ -305,7 +294,21 @@ def create_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
     fingerprint = calculate_file_fingerprint(file_path)
     task_id = str(uuid4())
     created_at = _now()
+    rerun_of_task_id = payload.get("rerunOfTaskId")
+    if rerun_of_task_id is not None:
+        rerun_of_task_id = _require_text(
+            rerun_of_task_id,
+            "INVALID_MESSAGE",
+            "原任务 ID 无效",
+        )
     with connect_database() as connection:
+        if rerun_of_task_id is not None:
+            original_task = connection.execute(
+                "SELECT id FROM tasks WHERE id = ?",
+                (rerun_of_task_id,),
+            ).fetchone()
+            if original_task is None:
+                raise TaskError("TASK_NOT_FOUND", "原翻译任务不存在")
         glossary_version = _get_glossary_version(connection)
         connection.execute(
             """
@@ -315,8 +318,8 @@ def create_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
                 source_language, target_language, translator_id,
                 glossary_version, protection_version, status, total_rows,
                 pending_rows, candidate_rows, manual_rows, completed_rows,
-                failed_rows, created_at, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?)
+                failed_rows, rerun_of_task_id, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)
             """,
             (
                 task_id,
@@ -335,6 +338,7 @@ def create_translation_task(payload: dict[str, Any]) -> dict[str, Any]:
                 "draft",
                 import_result["totalRows"],
                 import_result["totalRows"],
+                rerun_of_task_id,
                 created_at,
                 created_at,
             ),
@@ -616,16 +620,25 @@ def process_translation_batch(payload: dict[str, Any]) -> dict[str, Any]:
         "INVALID_MESSAGE",
         "任务 ID 不能为空",
     )
-    batch_size = payload.get("batchSize", DEFAULT_BATCH_SIZE)
-    if (
-        not isinstance(batch_size, int)
-        or isinstance(batch_size, bool)
-        or batch_size < 1
-        or batch_size > MAX_BATCH_SIZE
-    ):
-        raise TaskError("INVALID_MESSAGE", "批次大小无效")
-
     with connect_database() as connection:
+        batch_size = payload.get("batchSize")
+        if batch_size is None:
+            settings_row = connection.execute(
+                "SELECT batch_size FROM app_settings WHERE id = 1"
+            ).fetchone()
+            batch_size = (
+                int(settings_row["batch_size"])
+                if settings_row is not None
+                else DEFAULT_BATCH_SIZE
+            )
+        if (
+            not isinstance(batch_size, int)
+            or isinstance(batch_size, bool)
+            or batch_size < 1
+            or batch_size > MAX_BATCH_SIZE
+        ):
+            raise TaskError("INVALID_MESSAGE", "批次大小无效")
+
         task = connection.execute(
             "SELECT * FROM tasks WHERE id = ?",
             (task_id,),
@@ -868,80 +881,3 @@ def change_translation_task_state(payload: dict[str, Any]) -> dict[str, Any]:
             )
             _refresh_task(connection, task_id, status)
         return _task_detail(connection, task_id)
-
-
-def upsert_glossary_term(payload: dict[str, Any]) -> dict[str, Any]:
-    source_text = _require_text(
-        payload.get("sourceText"),
-        "INVALID_MESSAGE",
-        "术语原文不能为空",
-    )
-    target_text = _require_text(
-        payload.get("targetText"),
-        "INVALID_MESSAGE",
-        "术语译文不能为空",
-    )
-    term_id = payload.get("termId")
-    if term_id is not None:
-        term_id = _require_text(term_id, "INVALID_MESSAGE", "术语 ID 无效")
-    else:
-        term_id = str(uuid4())
-    now = _now()
-
-    with connect_database() as connection:
-        existing = connection.execute(
-            "SELECT id FROM glossary_terms WHERE id = ?",
-            (term_id,),
-        ).fetchone()
-        if existing:
-            connection.execute(
-                """
-                UPDATE glossary_terms
-                SET source_text = ?, target_text = ?, category = ?,
-                    exact_match = ?, case_sensitive = ?, enabled = ?,
-                    note = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    source_text,
-                    target_text,
-                    str(payload.get("category") or "通用"),
-                    int(payload.get("exactMatch") is not False),
-                    int(payload.get("caseSensitive") is True),
-                    int(payload.get("enabled") is not False),
-                    payload.get("note"),
-                    now,
-                    term_id,
-                ),
-            )
-        else:
-            connection.execute(
-                """
-                INSERT INTO glossary_terms(
-                    id, source_text, target_text, category, exact_match,
-                    case_sensitive, enabled, note, created_at, updated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    term_id,
-                    source_text,
-                    target_text,
-                    str(payload.get("category") or "通用"),
-                    int(payload.get("exactMatch") is not False),
-                    int(payload.get("caseSensitive") is True),
-                    int(payload.get("enabled") is not False),
-                    payload.get("note"),
-                    now,
-                    now,
-                ),
-            )
-        version = _increment_glossary_version(connection)
-        return {"termId": term_id, "glossaryVersion": version}
-
-
-def list_glossary_terms(_payload: dict[str, Any]) -> dict[str, Any]:
-    with connect_database() as connection:
-        return {
-            "glossaryVersion": _get_glossary_version(connection),
-            "terms": _load_glossary_terms(connection),
-        }

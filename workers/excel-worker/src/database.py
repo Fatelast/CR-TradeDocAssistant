@@ -1,14 +1,40 @@
-"""M2—M3 本地 SQLite 数据库与版本化迁移。"""
+"""M2—M4 本地 SQLite 数据库与版本化迁移。"""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+
+def build_glossary_term_key(
+    source_text: str,
+    exact_match: bool,
+    case_sensitive: bool,
+) -> str:
+    """构造跨导入、编辑和迁移稳定的术语身份键。"""
+
+    normalized_source = " ".join(source_text.strip().split())
+    if not case_sensitive:
+        normalized_source = normalized_source.casefold()
+    serialized = json.dumps(
+        {
+            "sourceText": normalized_source,
+            "exactMatch": exact_match,
+            "caseSensitive": case_sensitive,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def resolve_database_path() -> Path:
@@ -157,6 +183,109 @@ def _migrate(connection: sqlite3.Connection) -> None:
             WHERE translation IS NOT NULL;
             """
         )
+        connection.execute("PRAGMA user_version = 2")
+        version = 2
+
+    if version < 3:
+        connection.executescript(
+            """
+            ALTER TABLE tasks
+                ADD COLUMN rerun_of_task_id TEXT
+                    REFERENCES tasks(id) ON DELETE SET NULL;
+            ALTER TABLE glossary_terms ADD COLUMN term_key TEXT;
+            CREATE TABLE IF NOT EXISTS task_exports (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL
+                    REFERENCES tasks(id) ON DELETE CASCADE,
+                output_file_path TEXT NOT NULL,
+                output_file_name TEXT NOT NULL,
+                output_file_sha256 TEXT,
+                status TEXT NOT NULL,
+                sheet_name TEXT NOT NULL,
+                target_column INTEGER,
+                target_column_letter TEXT,
+                created_target_column INTEGER NOT NULL DEFAULT 0,
+                written_rows INTEGER NOT NULL DEFAULT 0,
+                skipped_rows INTEGER NOT NULL DEFAULT 0,
+                validated INTEGER NOT NULL DEFAULT 0,
+                error_code TEXT,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_exports_task
+                ON task_exports(task_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_task_exports_status
+                ON task_exports(status, created_at);
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                default_output_directory TEXT,
+                batch_size INTEGER NOT NULL DEFAULT 50
+                    CHECK(batch_size BETWEEN 1 AND 200),
+                log_level TEXT NOT NULL DEFAULT 'info'
+                    CHECK(log_level IN ('info', 'error')),
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_history
+                ON tasks(updated_at DESC, id);
+            CREATE INDEX IF NOT EXISTS idx_glossary_category
+                ON glossary_terms(category, enabled, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_cache_expiry
+                ON translation_cache(expires_at);
+            """
+        )
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO app_settings(
+                id, default_output_directory, batch_size,
+                log_level, updated_at
+            ) VALUES(1, NULL, 50, 'info', ?)
+            """,
+            (now,),
+        )
+        existing_keys: set[str] = set()
+        terms = connection.execute(
+            """
+            SELECT id, source_text, exact_match, case_sensitive
+            FROM glossary_terms
+            ORDER BY created_at, id
+            """
+        ).fetchall()
+        for term in terms:
+            canonical_key = build_glossary_term_key(
+                str(term["source_text"]),
+                bool(term["exact_match"]),
+                bool(term["case_sensitive"]),
+            )
+            term_key = canonical_key
+            if canonical_key in existing_keys:
+                term_key = f"{canonical_key}:legacy:{term['id']}"
+            existing_keys.add(term_key)
+            connection.execute(
+                "UPDATE glossary_terms SET term_key = ? WHERE id = ?",
+                (term_key, term["id"]),
+            )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_glossary_term_key
+            ON glossary_terms(term_key)
+            WHERE term_key IS NOT NULL
+            """
+        )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO app_meta(key, value)
+            VALUES('last_cleanup_at', '')
+            """
+        )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO app_meta(key, value)
+            VALUES('last_cleanup_summary', '{}')
+            """
+        )
+        connection.execute("PRAGMA user_version = 3")
+        version = 3
 
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     connection.commit()

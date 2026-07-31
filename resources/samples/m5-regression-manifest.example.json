@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "notice": "仅填写已脱敏样本；resources/private-samples 不能提交到 Git。",
+  "samples": [
+    {
+      "id": "example-standard",
+      "file": "example-standard.xlsx",
+      "category": "多工作表与非首行表头",
+      "sha256": "填写脱敏文件的 SHA-256",
+      "expected": {
+        "sheetCount": 2,
+        "sourceSheet": "填写工作表名",
+        "headerRow": 2,
+        "sourceColumn": 3,
+        "targetColumn": 4,
+        "mustPreserveFormulas": true,
+        "mustPreserveStyles": true
+      },
+      "excelResult": "pending",
+      "wpsResult": "pending",
+      "knownLimitations": []
+    }
+  ]
+}

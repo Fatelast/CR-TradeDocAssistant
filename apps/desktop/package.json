@@ -1,8 +1,10 @@
 {
   "name": "@rus-trade/desktop",
-  "version": "0.4.0",
+  "version": "0.6.0-beta.1",
   "private": true,
   "description": "中俄贸易文件助手桌面端",
+  "productName": "中俄贸易文件助手",
+  "author": "Fatelast",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
@@ -10,7 +12,8 @@
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint . --ext .ts,.vue --max-warnings=0",
-    "test": "vitest run --pool=threads --maxWorkers=1"
+    "test": "vitest run --pool=threads --maxWorkers=1",
+    "package:win": "npm run build && set ELECTRON_CUSTOM_DIR=&& electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "@rus-trade/shared": "*",
@@ -22,7 +25,8 @@
     "@typescript-eslint/eslint-plugin": "^8.46.0",
     "@typescript-eslint/parser": "^8.46.0",
     "@vitejs/plugin-vue": "^6.0.8",
-    "electron": "^43.2.0",
+    "electron": "43.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^8.57.1",
     "eslint-config-airbnb-base": "^15.0.0",
@@ -35,5 +39,59 @@
     "vitest": "^4.1.10",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.3.8"
+  },
+  "build": {
+    "appId": "com.fatelast.crtradedocassistant",
+    "productName": "中俄贸易文件助手",
+    "asar": true,
+    "directories": {
+      "output": "../../release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../workers/excel-worker/dist/rus-trade-worker",
+        "to": "worker",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "../../resources/licenses",
+        "to": "licenses",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "../../resources/icons/app-icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CR-TradeDocAssistant-${version}-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "中俄贸易文件助手"
+    },
+    "executableName": "CR-TradeDocAssistant"
   }
 }

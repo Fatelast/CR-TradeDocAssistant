@@ -23,3 +23,8 @@ workers/excel-worker/build/
 workers/excel-worker/dist/
 workers/excel-worker/.test-data/
 *.spec
+!workers/excel-worker/rus-trade-worker.spec
+
+release/
+
+resources/private-samples/

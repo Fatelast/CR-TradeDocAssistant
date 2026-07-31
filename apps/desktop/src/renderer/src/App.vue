@@ -17,7 +17,12 @@ import type {
   WorksheetPreview,
 } from '@rus-trade/shared';
 
+import DataLibraryPanel from './components/DataLibraryPanel.vue';
+import HistoryPanel from './components/HistoryPanel.vue';
+import SettingsPanel from './components/SettingsPanel.vue';
 import TranslationTaskPanel from './components/TranslationTaskPanel.vue';
+
+type WorkspaceModule = 'workbench' | 'history' | 'data' | 'settings';
 
 type DiagnosticStatus = 'checking' | 'healthy' | 'error';
 type ImportStatus =
@@ -29,6 +34,7 @@ type ImportStatus =
   | 'creating';
 
 const { t } = useI18n();
+const activeModule = ref<WorkspaceModule>('workbench');
 const diagnosticStatus = ref<DiagnosticStatus>('checking');
 const workerInfo = ref<WorkerInfo>();
 const importStatus = ref<ImportStatus>('idle');
@@ -141,6 +147,7 @@ const openTask = async (taskId: string): Promise<void> => {
     return;
   }
   activeTask.value = response.data;
+  activeModule.value = 'workbench';
 };
 
 const handleTaskUpdated = (detail: TranslationTaskDetail): void => {
@@ -220,13 +227,29 @@ const selectWorkbook = async (): Promise<void> => {
 };
 
 const startNewWorkbook = async (): Promise<void> => {
+  activeModule.value = 'workbench';
   activeTask.value = undefined;
   await selectWorkbook();
+};
+
+const selectModule = (module: WorkspaceModule): void => {
+  clearError();
+  isDragging.value = false;
+  activeModule.value = module;
+};
+
+const handleDragEnter = (): void => {
+  if (activeModule.value === 'workbench') {
+    isDragging.value = true;
+  }
 };
 
 const handleDrop = async (event: DragEvent): Promise<void> => {
   event.preventDefault();
   isDragging.value = false;
+  if (activeModule.value !== 'workbench') {
+    return;
+  }
   const file = event.dataTransfer?.files[0];
   if (!file) {
     return;
@@ -309,7 +332,7 @@ onMounted(() => {
 <template>
   <main
     class="workspace-shell"
-    @dragenter.prevent="isDragging = true"
+    @dragenter.prevent="handleDragEnter"
     @dragover.prevent="isDragging = true"
     @dragleave.self="isDragging = false"
     @drop="handleDrop"
@@ -339,14 +362,67 @@ onMounted(() => {
           :class="`status-dot--${diagnosticStatus}`"
         />
         <div>
-          <small>{{ t('系统基线') }} · M3</small>
+          <small>{{ t('系统基线') }} · M4</small>
           <strong>{{ diagnosticCaption }}</strong>
         </div>
         <code>{{ workerInfo?.workerVersion ?? '—' }}</code>
       </div>
     </header>
 
-    <section class="stage-shell">
+    <nav
+      class="module-nav"
+      :aria-label="t('主要功能')"
+    >
+      <button
+        type="button"
+        :class="{ active: activeModule === 'workbench' }"
+        @click="selectModule('workbench')"
+      >
+        <span>01</span>{{ t('翻译工作台') }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeModule === 'history' }"
+        @click="selectModule('history')"
+      >
+        <span>02</span>{{ t('历史记录') }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeModule === 'data' }"
+        @click="selectModule('data')"
+      >
+        <span>03</span>{{ t('术语与缓存') }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeModule === 'settings' }"
+        @click="selectModule('settings')"
+      >
+        <span>04</span>{{ t('设置与维护') }}
+      </button>
+    </nav>
+
+    <div
+      v-if="errorCode"
+      class="error-callout global-error"
+      role="alert"
+    >
+      <strong>{{ errorCode }}</strong>
+      <span>{{ t(errorMessage ?? '未知错误') }}</span>
+      <button
+        type="button"
+        :aria-label="t('关闭错误提示')"
+        @click="clearError"
+      >
+        ×
+      </button>
+    </div>
+
+    <section
+      v-if="activeModule === 'workbench'"
+      class="stage-shell"
+    >
       <aside class="stage-rail">
         <p>WORK SEQUENCE</p>
         <ol>
@@ -448,15 +524,6 @@ onMounted(() => {
           </strong>
           <small>{{ t('文件与译文只保存在本机，不会上传。') }}</small>
         </button>
-
-        <div
-          v-if="errorCode"
-          class="error-callout"
-          role="alert"
-        >
-          <strong>{{ errorCode }}</strong>
-          <span>{{ t(errorMessage ?? '未知错误') }}</span>
-        </div>
 
         <template v-if="workbook && !activeTask">
           <section class="file-ledger">
@@ -703,8 +770,27 @@ onMounted(() => {
       </div>
     </section>
 
+    <section
+      v-else
+      class="module-shell"
+    >
+      <HistoryPanel
+        v-if="activeModule === 'history'"
+        @open-task="openTask"
+        @error="handleTaskError"
+      />
+      <DataLibraryPanel
+        v-else-if="activeModule === 'data'"
+        @error="handleTaskError"
+      />
+      <SettingsPanel
+        v-else
+        @error="handleTaskError"
+      />
+    </section>
+
     <div
-      v-if="isDragging"
+      v-if="isDragging && activeModule === 'workbench'"
       class="drop-overlay"
       aria-hidden="true"
     >
@@ -712,8 +798,8 @@ onMounted(() => {
     </div>
 
     <footer class="workspace-footer">
-      <span>RUS-TRADE-FILE-ASSISTANT / M3</span>
-      <span>REVIEW LEDGER · VERIFIED XLSX · PROTOCOL 1.0</span>
+      <span>RUS-TRADE-FILE-ASSISTANT / M4</span>
+      <span>LOCAL ARCHIVE · GLOSSARY XLSX · RETENTION · PROTOCOL 1.0</span>
     </footer>
   </main>
 </template>

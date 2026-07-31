@@ -8,6 +8,18 @@ import sys
 
 from protocol import handle_line
 
+
+def _configure_standard_streams() -> None:
+    """确保开发与冻结环境都使用稳定的 UTF-8 协议编码。"""
+
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="strict")
+
+
+_configure_standard_streams()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",

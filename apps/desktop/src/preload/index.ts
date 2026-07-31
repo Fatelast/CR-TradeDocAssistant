@@ -4,22 +4,47 @@ import {
   webUtils,
 } from 'electron';
 import {
+  type AppSettings,
+  type ApplyGlossaryImportRequest,
+  type ApplyGlossaryImportResult,
   type BuildWorkbookRowsRequest,
   type ChangeTranslationTaskStateRequest,
   type CreateTranslationTaskRequest,
+  type DataCleanupPreview,
+  type DataCleanupRequest,
+  type DataCleanupResult,
   type DesktopApi,
+  type DirectorySelectionResult,
   type ExportPreflightRequest,
   type ExportPreflightResult,
+  type GlossaryImportSelectionResult,
+  type GlossaryTermListResult,
+  type HistoryPathRequest,
+  type HistoryPathResult,
   type ImportRowsResult,
   IPC_CHANNELS,
+  type ListGlossaryTermsRequest,
+  type ListTaskHistoryRequest,
+  type ListTranslationCacheRequest,
   type ListTranslationTasksRequest,
+  type LocalExportSelectionResult,
+  type LogCleanupPreview,
+  type LogCleanupResult,
   type ProcessTranslationBatchRequest,
   type ReviewTranslationRowRequest,
+  type RunDataCleanupRequest,
+  type RunLogCleanupRequest,
+  type TaskHistoryDetail,
+  type TaskHistoryListResult,
+  type TranslationCacheListResult,
   type TranslationExportSelectionResult,
   type TranslationTaskDetail,
   type TranslationTaskIdRequest,
   type TranslationTaskListResult,
+  type UpdateAppSettingsRequest,
   type UpdateTranslationRowRequest,
+  type UpsertGlossaryTermRequest,
+  type UpsertGlossaryTermResult,
   type WorkbookSelectionResult,
   type WorkbookSheetRequest,
   type WorkerInfo,
@@ -115,6 +140,108 @@ const desktopApi: DesktopApi = {
       IPC_CHANNELS.exportTranslationTask,
       request,
     ) as Promise<TranslationExportSelectionResult>
+  ),
+  listTaskHistory: (request: ListTaskHistoryRequest = {}) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.listTaskHistory,
+      request,
+    ) as Promise<WorkerResponse<TaskHistoryListResult>>
+  ),
+  getTaskHistoryDetail: (request: TranslationTaskIdRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.getTaskHistoryDetail,
+      request,
+    ) as Promise<WorkerResponse<TaskHistoryDetail>>
+  ),
+  createRerunTask: (request: TranslationTaskIdRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.createRerunTask,
+      request,
+    ) as Promise<WorkerResponse<TranslationTaskDetail>>
+  ),
+  openHistoryFile: (request: HistoryPathRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.openHistoryFile,
+      request,
+    ) as Promise<WorkerResponse<HistoryPathResult>>
+  ),
+  listGlossaryTerms: (request: ListGlossaryTermsRequest = {}) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.listGlossaryTerms,
+      request,
+    ) as Promise<WorkerResponse<GlossaryTermListResult>>
+  ),
+  upsertGlossaryTerm: (request: UpsertGlossaryTermRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.upsertGlossaryTerm,
+      request,
+    ) as Promise<WorkerResponse<UpsertGlossaryTermResult>>
+  ),
+  selectGlossaryImport: () => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.selectGlossaryImport,
+    ) as Promise<GlossaryImportSelectionResult>
+  ),
+  applyGlossaryImport: (request: ApplyGlossaryImportRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.applyGlossaryImport,
+      request,
+    ) as Promise<WorkerResponse<ApplyGlossaryImportResult>>
+  ),
+  exportGlossary: () => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.exportGlossary,
+    ) as Promise<LocalExportSelectionResult>
+  ),
+  listTranslationCache: (request: ListTranslationCacheRequest = {}) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.listTranslationCache,
+      request,
+    ) as Promise<WorkerResponse<TranslationCacheListResult>>
+  ),
+  previewDataCleanup: (request: DataCleanupRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.previewDataCleanup,
+      request,
+    ) as Promise<WorkerResponse<DataCleanupPreview>>
+  ),
+  runDataCleanup: (request: RunDataCleanupRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.runDataCleanup,
+      request,
+    ) as Promise<WorkerResponse<DataCleanupResult>>
+  ),
+  previewLogCleanup: () => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.previewLogCleanup,
+    ) as Promise<WorkerResponse<LogCleanupPreview>>
+  ),
+  runLogCleanup: (request: RunLogCleanupRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.runLogCleanup,
+      request,
+    ) as Promise<WorkerResponse<LogCleanupResult>>
+  ),
+  getAppSettings: () => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.getAppSettings,
+    ) as Promise<WorkerResponse<AppSettings>>
+  ),
+  selectOutputDirectory: () => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.selectOutputDirectory,
+    ) as Promise<DirectorySelectionResult>
+  ),
+  updateAppSettings: (request: UpdateAppSettingsRequest) => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.updateAppSettings,
+      request,
+    ) as Promise<WorkerResponse<AppSettings>>
+  ),
+  exportAppSettings: () => (
+    ipcRenderer.invoke(
+      IPC_CHANNELS.exportAppSettings,
+    ) as Promise<LocalExportSelectionResult>
   ),
 };
 

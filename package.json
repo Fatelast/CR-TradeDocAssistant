@@ -1,6 +1,6 @@
 {
   "name": "rus-trade-file-assistant",
-  "version": "0.4.0",
+  "version": "0.6.0-beta.1",
   "private": true,
   "description": "中俄贸易文件助手桌面应用",
   "workspaces": [
@@ -16,7 +16,13 @@
     "lint": "npm run lint --workspace @rus-trade/desktop",
     "test": "npm run test:worker && npm run test:desktop",
     "test:worker": "python -m unittest discover -s workers/excel-worker/tests -p \"test_*.py\"",
-    "test:desktop": "npm run test --workspace @rus-trade/desktop"
+    "test:desktop": "npm run test --workspace @rus-trade/desktop",
+    "package:worker": "python -m PyInstaller --noconfirm --clean --distpath workers/excel-worker/dist --workpath workers/excel-worker/build workers/excel-worker/rus-trade-worker.spec",
+    "test:worker:packaged": "node scripts/smoke-packaged-worker.mjs",
+    "package:desktop": "npm run package:win --workspace @rus-trade/desktop",
+    "package:win": "npm run package:worker && npm run test:worker:packaged && npm run package:desktop",
+    "verify:release": "npm run typecheck && npm run lint && npm test && npm run package:win && npm run verify:artifacts",
+    "verify:artifacts": "node scripts/verify-release-artifacts.mjs"
   },
   "engines": {
     "node": ">=22.0.0",

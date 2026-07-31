@@ -23,6 +23,24 @@ export const IPC_CHANNELS = {
   reviewTranslationRow: 'translation:review-row',
   preflightExport: 'export:preflight',
   exportTranslationTask: 'export:select-and-run',
+  listTaskHistory: 'history:list',
+  getTaskHistoryDetail: 'history:get-detail',
+  createRerunTask: 'history:rerun',
+  openHistoryFile: 'history:open-file',
+  listGlossaryTerms: 'glossary:list',
+  upsertGlossaryTerm: 'glossary:upsert',
+  selectGlossaryImport: 'glossary:select-import',
+  applyGlossaryImport: 'glossary:apply-import',
+  exportGlossary: 'glossary:export',
+  listTranslationCache: 'cache:list',
+  previewDataCleanup: 'maintenance:preview-cleanup',
+  runDataCleanup: 'maintenance:run-cleanup',
+  previewLogCleanup: 'maintenance:preview-log-cleanup',
+  runLogCleanup: 'maintenance:run-log-cleanup',
+  getAppSettings: 'settings:get',
+  selectOutputDirectory: 'settings:select-output-directory',
+  updateAppSettings: 'settings:update',
+  exportAppSettings: 'settings:export',
 } as const
 
 export const WORKER_ACTIONS = {
@@ -41,6 +59,21 @@ export const WORKER_ACTIONS = {
   exportTranslationTask: 'export_translation_task',
   upsertGlossaryTerm: 'upsert_glossary_term',
   listGlossaryTerms: 'list_glossary_terms',
+  preflightGlossaryImport: 'preflight_glossary_import',
+  applyGlossaryImport: 'apply_glossary_import',
+  exportGlossary: 'export_glossary',
+  listTaskHistory: 'list_task_history',
+  getTaskHistoryDetail: 'get_task_history_detail',
+  createRerunTask: 'create_rerun_task',
+  resolveHistoryPath: 'resolve_history_path',
+  recoverPendingExports: 'recover_pending_exports',
+  listTranslationCache: 'list_translation_cache',
+  previewDataCleanup: 'preview_data_cleanup',
+  runDataCleanup: 'run_data_cleanup',
+  runScheduledCleanup: 'run_scheduled_cleanup',
+  getAppSettings: 'get_app_settings',
+  updateAppSettings: 'update_app_settings',
+  exportAppSettings: 'export_app_settings',
 } as const
 
 export type WorkerAction =
@@ -88,6 +121,16 @@ export type WorkerErrorCode =
   | 'EXPORT_CELL_MERGED'
   | 'EXPORT_WRITE_FAILED'
   | 'EXPORT_VALIDATION_FAILED'
+  | 'GLOSSARY_TERM_DUPLICATE'
+  | 'GLOSSARY_IMPORT_INVALID'
+  | 'GLOSSARY_IMPORT_LIMIT_EXCEEDED'
+  | 'GLOSSARY_IMPORT_CHANGED'
+  | 'HISTORY_TASK_NOT_FOUND'
+  | 'EXPORT_RECORD_NOT_FOUND'
+  | 'TASK_SOURCE_RESELECT_REQUIRED'
+  | 'CLEANUP_PLAN_CHANGED'
+  | 'SETTINGS_INVALID'
+  | 'OUTPUT_DIRECTORY_UNAVAILABLE'
 
 export interface WorkerRequest<
   TAction extends WorkerAction = WorkerAction,
@@ -275,6 +318,7 @@ export interface TranslationTaskSummary {
   manualRows: number
   completedRows: number
   failedRows: number
+  rerunOfTaskId: string | null
   progress: number
   createdAt: string
   updatedAt: string
@@ -367,6 +411,7 @@ export interface WorkerExportTranslationTaskRequest {
 }
 
 export interface TranslationExportResult {
+  exportId: string
   taskId: string
   outputPath: string
   outputFileName: string
@@ -383,6 +428,256 @@ export interface TranslationExportResult {
 export interface TranslationExportSelectionResult {
   cancelled: boolean
   response?: WorkerResponse<TranslationExportResult>
+}
+
+export interface ListTaskHistoryRequest {
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: TranslationTaskStatus
+  days?: 7 | 30 | 90
+}
+
+export interface TaskHistoryItem extends TranslationTaskSummary {
+  sourceExists: boolean
+  exportCount: number
+  latestExportStatus: TaskExportStatus | null
+}
+
+export type TaskExportStatus =
+  | 'pending'
+  | 'completed'
+  | 'recovered'
+  | 'failed'
+
+export interface TaskExportRecord {
+  exportId: string
+  taskId: string
+  outputFilePath: string
+  outputFileName: string
+  outputSha256: string | null
+  status: TaskExportStatus
+  sheetName: string
+  targetColumn: number | null
+  targetColumnLetter: string | null
+  createdTargetColumn: boolean
+  writtenRows: number
+  skippedRows: number
+  validated: boolean
+  errorCode: WorkerErrorCode | null
+  outputExists: boolean
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface TaskHistoryListResult {
+  items: TaskHistoryItem[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+export interface TaskHistoryDetail {
+  task: TranslationTaskSummary
+  sourceExists: boolean
+  exports: TaskExportRecord[]
+}
+
+export interface HistoryPathRequest {
+  entityType: 'source' | 'export'
+  entityId: string
+}
+
+export interface HistoryPathResult {
+  path: string
+  fileName: string
+  exists: boolean
+  opened?: boolean
+}
+
+export interface GlossaryTerm {
+  termId: string
+  sourceText: string
+  targetText: string
+  category: string
+  exactMatch: boolean
+  caseSensitive: boolean
+  enabled: boolean
+  note: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListGlossaryTermsRequest {
+  page?: number
+  pageSize?: number
+  search?: string
+  category?: string
+  enabled?: boolean
+}
+
+export interface GlossaryTermListResult {
+  glossaryVersion: number
+  items: GlossaryTerm[]
+  categories: string[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+export interface UpsertGlossaryTermRequest {
+  termId?: string
+  sourceText: string
+  targetText: string
+  category?: string
+  exactMatch?: boolean
+  caseSensitive?: boolean
+  enabled?: boolean
+  note?: string | null
+}
+
+export interface UpsertGlossaryTermResult {
+  termId: string
+  glossaryVersion: number
+}
+
+export interface GlossaryImportPreflightResult {
+  fileName: string
+  fileSha256: string
+  totalRows: number
+  createdRows: number
+  updatedRows: number
+  unchangedRows: number
+}
+
+export interface GlossaryImportSelectionResult {
+  cancelled: boolean
+  response?: WorkerResponse<GlossaryImportPreflightResult>
+}
+
+export interface ApplyGlossaryImportRequest {
+  expectedSha256: string
+}
+
+export interface ApplyGlossaryImportResult {
+  glossaryVersion: number
+  createdRows: number
+  updatedRows: number
+  unchangedRows: number
+}
+
+export interface LocalExportResult {
+  outputPath: string
+  outputFileName: string
+  validated: boolean
+  termCount?: number
+}
+
+export interface LocalExportSelectionResult {
+  cancelled: boolean
+  response?: WorkerResponse<LocalExportResult>
+}
+
+export interface TranslationCacheItem {
+  cacheKey: string
+  sourceText: string
+  translation: string
+  translatorId: string
+  glossaryVersion: number
+  confirmedAt: string
+  lastUsedAt: string
+  expiresAt: string
+  expired: boolean
+}
+
+export interface ListTranslationCacheRequest {
+  page?: number
+  pageSize?: number
+  search?: string
+}
+
+export interface TranslationCacheListResult {
+  items: TranslationCacheItem[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+export type DataCleanupScope =
+  | 'expired_tasks'
+  | 'selected_tasks'
+  | 'expired_cache'
+  | 'selected_cache'
+  | 'all_cache'
+
+export interface DataCleanupRequest {
+  scopes: DataCleanupScope[]
+  taskIds?: string[]
+  cacheKeys?: string[]
+}
+
+export interface DataCleanupPreview {
+  scopes: DataCleanupScope[]
+  taskIds: string[]
+  cacheKeys: string[]
+  planHash: string
+  taskCount: number
+  taskRowCount: number
+  exportCount: number
+  cacheCount: number
+}
+
+export interface RunDataCleanupRequest extends DataCleanupRequest {
+  planHash: string
+}
+
+export interface DataCleanupResult {
+  taskCount: number
+  taskRowCount: number
+  exportCount: number
+  cacheCount: number
+  completedAt: string
+}
+
+export interface LogCleanupPreview {
+  planHash: string
+  fileCount: number
+  sizeBytes: number
+}
+
+export interface RunLogCleanupRequest {
+  planHash: string
+}
+
+export interface LogCleanupResult {
+  fileCount: number
+  sizeBytes: number
+}
+
+export interface AppSettings {
+  defaultOutputDirectory: string | null
+  batchSize: number
+  logLevel: 'info' | 'error'
+  retention: {
+    taskDays: 90
+    cacheDays: 180
+    logDays: 30
+  }
+  updatedAt: string
+}
+
+export interface UpdateAppSettingsRequest {
+  defaultOutputDirectory: string | null
+  batchSize: number
+  logLevel: 'info' | 'error'
+}
+
+export interface DirectorySelectionResult {
+  cancelled: boolean
+  directoryPath?: string
 }
 
 export interface WorkerCompletedResponse<TData = unknown> {
@@ -443,4 +738,46 @@ export interface DesktopApi {
   exportTranslationTask: (
     request: ExportPreflightRequest,
   ) => Promise<TranslationExportSelectionResult>
+  listTaskHistory: (
+    request?: ListTaskHistoryRequest,
+  ) => Promise<WorkerResponse<TaskHistoryListResult>>
+  getTaskHistoryDetail: (
+    request: TranslationTaskIdRequest,
+  ) => Promise<WorkerResponse<TaskHistoryDetail>>
+  createRerunTask: (
+    request: TranslationTaskIdRequest,
+  ) => Promise<WorkerResponse<TranslationTaskDetail>>
+  openHistoryFile: (
+    request: HistoryPathRequest,
+  ) => Promise<WorkerResponse<HistoryPathResult>>
+  listGlossaryTerms: (
+    request?: ListGlossaryTermsRequest,
+  ) => Promise<WorkerResponse<GlossaryTermListResult>>
+  upsertGlossaryTerm: (
+    request: UpsertGlossaryTermRequest,
+  ) => Promise<WorkerResponse<UpsertGlossaryTermResult>>
+  selectGlossaryImport: () => Promise<GlossaryImportSelectionResult>
+  applyGlossaryImport: (
+    request: ApplyGlossaryImportRequest,
+  ) => Promise<WorkerResponse<ApplyGlossaryImportResult>>
+  exportGlossary: () => Promise<LocalExportSelectionResult>
+  listTranslationCache: (
+    request?: ListTranslationCacheRequest,
+  ) => Promise<WorkerResponse<TranslationCacheListResult>>
+  previewDataCleanup: (
+    request: DataCleanupRequest,
+  ) => Promise<WorkerResponse<DataCleanupPreview>>
+  runDataCleanup: (
+    request: RunDataCleanupRequest,
+  ) => Promise<WorkerResponse<DataCleanupResult>>
+  previewLogCleanup: () => Promise<WorkerResponse<LogCleanupPreview>>
+  runLogCleanup: (
+    request: RunLogCleanupRequest,
+  ) => Promise<WorkerResponse<LogCleanupResult>>
+  getAppSettings: () => Promise<WorkerResponse<AppSettings>>
+  selectOutputDirectory: () => Promise<DirectorySelectionResult>
+  updateAppSettings: (
+    request: UpdateAppSettingsRequest,
+  ) => Promise<WorkerResponse<AppSettings>>
+  exportAppSettings: () => Promise<LocalExportSelectionResult>
 }

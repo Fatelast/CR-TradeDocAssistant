@@ -40,35 +40,46 @@ type WorkerLogHandler = (
   message: string,
 ) => void;
 
+export const classifyWorkerStderr = (
+  message: string,
+): 'info' | 'error' => (
+  /(?:^|\s)(?:ERROR|CRITICAL)(?:\s|$)|Traceback/u.test(message)
+    ? 'error'
+    : 'info'
+);
+
+export interface WorkerProcessConfig {
+  executable: string;
+  arguments: readonly string[];
+}
+
 /**
- * 管理单个持久 Python Worker。
+ * 管理单个持久 Worker 进程。
  *
- * Context：M0—V1 只允许一个 Worker 执行长任务，因此请求在一个进程内按
- * JSON Lines 传递；M2 以小批次请求实现暂停与恢复，不引入额外并发进程。
+ * Context：开发环境通过 Python 解释器运行源码，安装环境直接运行
+ * PyInstaller 可执行程序。两种运行方式共用同一个 JSON Lines 契约。
  */
 export class WorkerClient {
   private childProcess?: ChildProcessWithoutNullStreams;
+
+  private readonly expectedStops = new WeakSet<ChildProcessWithoutNullStreams>();
 
   private stdoutReader?: Interface;
 
   private readonly pendingRequests = new Map<string, PendingRequest>();
 
-  private readonly workerEntry: string;
-
-  private readonly pythonExecutable: string;
+  private readonly processConfig: WorkerProcessConfig;
 
   private readonly dataDirectory: string;
 
   private readonly onLog: WorkerLogHandler;
 
   constructor(
-    workerEntry: string,
-    pythonExecutable: string,
+    processConfig: WorkerProcessConfig,
     dataDirectory = '',
     onLog: WorkerLogHandler = () => undefined,
   ) {
-    this.workerEntry = workerEntry;
-    this.pythonExecutable = pythonExecutable;
+    this.processConfig = processConfig;
     this.dataDirectory = dataDirectory;
     this.onLog = onLog;
   }
@@ -211,11 +222,20 @@ export class WorkerClient {
     );
   }
 
+  async runAction<TData>(
+    action: WorkerAction,
+    payload: Record<string, unknown> = {},
+    timeoutMs = 5_000,
+  ): Promise<WorkerResponse<TData>> {
+    return this.request<TData>(action, payload, timeoutMs);
+  }
+
   stop(): void {
     this.stdoutReader?.close();
     this.stdoutReader = undefined;
 
     if (this.childProcess && !this.childProcess.killed) {
+      this.expectedStops.add(this.childProcess);
       this.childProcess.stdin.end();
       this.childProcess.kill();
     }
@@ -230,8 +250,8 @@ export class WorkerClient {
     }
 
     const childProcess = spawn(
-      this.pythonExecutable,
-      [this.workerEntry],
+      this.processConfig.executable,
+      [...this.processConfig.arguments],
       {
         env: {
           ...process.env,
@@ -252,17 +272,24 @@ export class WorkerClient {
 
     this.stdoutReader.on('line', (line) => this.handleLine(line));
     childProcess.stderr.on('data', (chunk: Buffer) => {
-      this.onLog('info', chunk.toString('utf8').trim());
+      const message = chunk.toString('utf8').trim();
+      this.onLog(classifyWorkerStderr(message), message);
     });
     childProcess.on('error', (error) => {
       this.onLog('error', `Worker start failed: ${error.message}`);
-      this.rejectPendingRequests(error);
-      this.childProcess = undefined;
+      if (this.childProcess === childProcess) {
+        this.rejectPendingRequests(error);
+        this.childProcess = undefined;
+      }
     });
     childProcess.on('close', (code) => {
-      this.onLog('info', `Worker exited with code ${code ?? 'unknown'}`);
-      this.rejectPendingRequests(new Error('WORKER_EXITED'));
-      this.childProcess = undefined;
+      const expectedStop = this.expectedStops.has(childProcess);
+      const level = expectedStop ? 'info' : 'error';
+      this.onLog(level, `Worker exited with code ${code ?? 'unknown'}`);
+      if (this.childProcess === childProcess) {
+        this.rejectPendingRequests(new Error('WORKER_EXITED'));
+        this.childProcess = undefined;
+      }
     });
 
     return childProcess;

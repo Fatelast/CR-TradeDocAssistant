@@ -1,10 +1,11 @@
-"""M2—M3 离线翻译任务、审核与安全导出测试。"""
+"""M2—M4 离线翻译任务、审核、本地数据与安全导出测试。"""
 
 from __future__ import annotations
 
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -16,7 +17,7 @@ WORKER_SRC = Path(__file__).resolve().parents[1] / "src"
 SAMPLES = Path(__file__).resolve().parents[3] / "resources" / "samples"
 sys.path.insert(0, str(WORKER_SRC))
 
-from database import connect_database  # noqa: E402
+from database import connect_database, resolve_database_path  # noqa: E402
 from protocol import PROTOCOL_VERSION, handle_line  # noqa: E402
 from translation import (  # noqa: E402
     ProtectionError,
@@ -114,10 +115,64 @@ class TranslationTaskTestCase(unittest.TestCase):
                 for row in connection.execute("PRAGMA table_info(tasks)")
             }
 
-        self.assertEqual(version, 2)
+        self.assertEqual(version, 3)
         self.assertEqual(term_count, 5)
         self.assertIn("source_file_sha256", task_columns)
+        self.assertIn("rerun_of_task_id", task_columns)
 
+    def test_schema_v2_data_survives_v3_migration(self) -> None:
+        detail = self.create_standard_task()
+        task_id = detail["task"]["taskId"]
+        with connect_database() as connection:
+            term_count = connection.execute(
+                "SELECT COUNT(*) FROM glossary_terms"
+            ).fetchone()[0]
+
+        connection = sqlite3.connect(resolve_database_path())
+        try:
+            connection.executescript(
+                """
+                DROP INDEX IF EXISTS idx_glossary_term_key;
+                DROP INDEX IF EXISTS idx_glossary_category;
+                DROP INDEX IF EXISTS idx_tasks_history;
+                DROP INDEX IF EXISTS idx_cache_expiry;
+                DROP INDEX IF EXISTS idx_task_exports_task;
+                DROP INDEX IF EXISTS idx_task_exports_status;
+                DROP TABLE IF EXISTS task_exports;
+                DROP TABLE IF EXISTS app_settings;
+                ALTER TABLE glossary_terms DROP COLUMN term_key;
+                ALTER TABLE tasks DROP COLUMN rerun_of_task_id;
+                PRAGMA user_version = 2;
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        with connect_database() as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                3,
+            )
+            self.assertIsNotNone(
+                connection.execute(
+                    "SELECT id FROM tasks WHERE id = ?",
+                    (task_id,),
+                ).fetchone()
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM glossary_terms"
+                ).fetchone()[0],
+                term_count,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM glossary_terms "
+                    "WHERE term_key IS NULL"
+                ).fetchone()[0],
+                0,
+            )
     def test_task_batch_manual_update_cache_and_recovery(self) -> None:
         detail = self.create_standard_task()
         task = detail["task"]
@@ -406,6 +461,140 @@ class TranslationTaskTestCase(unittest.TestCase):
         self.assertEqual(preflight["type"], "error")
         self.assertEqual(preflight["error"]["code"], "EXPORT_RESTRICTED")
 
+    def test_m4_settings_and_glossary_xlsx_round_trip(self) -> None:
+        settings = self.request("get_app_settings", {})
+        self.assertEqual(settings["type"], "completed")
+        self.assertEqual(settings["data"]["batchSize"], 50)
+        self.assertEqual(settings["data"]["retention"]["taskDays"], 90)
+
+        updated = self.request(
+            "update_app_settings",
+            {
+                "defaultOutputDirectory": str(self.test_directory),
+                "batchSize": 25,
+                "logLevel": "error",
+            },
+        )
+        self.assertEqual(updated["data"]["batchSize"], 25)
+        settings_path = self.test_directory / "settings.json"
+        exported_settings = self.request(
+            "export_app_settings",
+            {"outputPath": str(settings_path)},
+        )
+        self.assertEqual(exported_settings["type"], "completed")
+        with settings_path.open(encoding="utf-8") as source:
+            settings_document = json.load(source)
+        self.assertEqual(settings_document["format"], "cr-trade-settings")
+
+        glossary_path = self.test_directory / "glossary.xlsx"
+        exported_glossary = self.request(
+            "export_glossary",
+            {"outputPath": str(glossary_path)},
+        )
+        self.assertEqual(exported_glossary["type"], "completed")
+        workbook = load_workbook(glossary_path)
+        try:
+            worksheet = workbook.active
+            worksheet.cell(2, 2, "已更新译文")
+            worksheet.append(
+                ["Новый термин", "新术语", "测试", "是", "否", "是", ""]
+            )
+            workbook.save(glossary_path)
+        finally:
+            workbook.close()
+
+        preflight = self.request(
+            "preflight_glossary_import",
+            {"filePath": str(glossary_path)},
+        )
+        self.assertEqual(preflight["type"], "completed")
+        self.assertEqual(preflight["data"]["createdRows"], 1)
+        self.assertEqual(preflight["data"]["updatedRows"], 1)
+        applied = self.request(
+            "apply_glossary_import",
+            {
+                "filePath": str(glossary_path),
+                "expectedSha256": preflight["data"]["fileSha256"],
+            },
+        )
+        self.assertEqual(applied["type"], "completed")
+        listed = self.request(
+            "list_glossary_terms",
+            {"search": "Новый термин"},
+        )
+        self.assertEqual(listed["data"]["total"], 1)
+        formula_term = self.request(
+            "upsert_glossary_term",
+            {"sourceText": "=HYPERLINK()", "targetText": "危险"},
+        )
+        self.assertEqual(formula_term["error"]["code"], "INVALID_MESSAGE")
+
+    def test_m4_history_rerun_export_and_confirmed_cleanup(self) -> None:
+        detail = self.create_standard_task()
+        completed = self.complete_task(detail)
+        task_id = completed["task"]["taskId"]
+        output_path = self.test_directory / "history-export.xlsx"
+        exported = self.request(
+            "export_translation_task",
+            {"taskId": task_id, "outputPath": str(output_path)},
+        )
+        self.assertEqual(exported["type"], "completed")
+        self.assertTrue(exported["data"]["exportId"])
+
+        history = self.request(
+            "list_task_history",
+            {"search": "m1-standard", "page": 1, "pageSize": 10},
+        )
+        self.assertEqual(history["data"]["total"], 1)
+        self.assertEqual(history["data"]["items"][0]["exportCount"], 1)
+        history_detail = self.request(
+            "get_task_history_detail",
+            {"taskId": task_id},
+        )
+        self.assertEqual(
+            history_detail["data"]["exports"][0]["status"],
+            "completed",
+        )
+
+        rerun = self.request("create_rerun_task", {"taskId": task_id})
+        self.assertEqual(rerun["type"], "completed")
+        self.assertNotEqual(rerun["data"]["task"]["taskId"], task_id)
+        self.assertEqual(rerun["data"]["task"]["rerunOfTaskId"], task_id)
+
+        cleanup_request = {
+            "scopes": ["selected_tasks"],
+            "taskIds": [task_id],
+            "cacheKeys": [],
+        }
+        preview = self.request("preview_data_cleanup", cleanup_request)
+        self.assertEqual(preview["data"]["taskCount"], 1)
+        self.assertEqual(preview["data"]["exportCount"], 1)
+        with connect_database() as connection:
+            connection.execute(
+                "UPDATE tasks SET updated_at = ? WHERE id = ?",
+                ("2099-01-01T00:00:00+00:00", task_id),
+            )
+        stale_cleanup = self.request(
+            "run_data_cleanup",
+            {**cleanup_request, "planHash": preview["data"]["planHash"]},
+        )
+        self.assertEqual(
+            stale_cleanup["error"]["code"],
+            "CLEANUP_PLAN_CHANGED",
+        )
+        preview = self.request("preview_data_cleanup", cleanup_request)
+        cleanup = self.request(
+            "run_data_cleanup",
+            {**cleanup_request, "planHash": preview["data"]["planHash"]},
+        )
+        self.assertEqual(cleanup["type"], "completed")
+        self.assertTrue(output_path.is_file())
+        self.assertTrue((SAMPLES / "m1-standard.xlsx").is_file())
+        deleted = self.request(
+            "get_task_history_detail",
+            {"taskId": task_id},
+        )
+        self.assertEqual(deleted["error"]["code"], "HISTORY_TASK_NOT_FOUND")
     def test_protected_fragments_round_trip_and_validation(self) -> None:
         source = (
             "Контейнер MSCU1234567, заказ PO-2026-001, "
