@@ -21,6 +21,7 @@ M5 已将 Python Worker 从“系统 Python + main.py”改造为随安装包分
 - `apps/desktop/package.json`：electron-builder、NSIS、ASAR、图标和资源配置；
 - `scripts/smoke-packaged-worker.mjs`：冻结 Worker 协议与 Excel 冒烟；
 - `scripts/verify-release-artifacts.mjs`：安装资源、体积和 SHA-256 校验；
+- `scripts/verify_regression_manifest.py`：私有脱敏样本的 SHA-256、结构和 Office 验收状态只读校验；
 - `resources/icons/`：PNG 与多尺寸 ICO；
 - `THIRD_PARTY_NOTICES.md`：随安装包分发的主要第三方许可摘要；
 - `resources/licenses/`：Electron、Vue、Vue I18n、openpyxl 和 PyInstaller 许可全文。
@@ -44,10 +45,12 @@ M5 已将 Python Worker 从“系统 Python + main.py”改造为随安装包分
 - PNG 为 1024×1024，ICO 包含 16、24、32、48、64、128、256 像素；
 - TypeScript 和 ESLint 在 M5 源码改造后通过；
 - Worker UTF-8 源码进程回归 2 项通过；
-- `npm run verify:release` 完整通过：Worker 23 项、桌面端 10 项、冻结 Worker 冒烟、NSIS 打包和产物校验全部成功；
-- 最终安装包为 126,401,819 字节（120.55 MiB），SHA-256 为 `b3d008bfca52976491816d76ccab7fea0271bed21e68d954d68f5114606f0413`；
+- 私有脱敏样本清单工具回归 2 项通过，严格模式会阻断未完成 Excel/WPS 验收；
+- `npm run verify:release` 完整通过：Worker 25 项、桌面端 10 项、冻结 Worker 冒烟、NSIS 打包和产物校验全部成功；
+- 最终安装包为 126,401,379 字节（120.55 MiB），SHA-256 为 `b5562fc4922f213c948c45d0cfe1202d652c19ab009c8c2c8a60e9a2e67a403c`；
 - 解包版和安装态均正常启动内置 Worker 并创建 schema v3 数据库；
-- 安装态退出无残留进程，静默卸载后程序目录/注册项清理完成且隔离业务数据库保留。
+- 自定义安装目录、桌面和开始菜单快捷方式、Windows GUI 子系统、内置 Worker 和隔离数据库均已在 Windows 11 本机验证；
+- 安装态退出无残留进程，静默卸载后程序目录/注册项/快捷方式清理完成且隔离业务数据库保留。
 
 ## 5. 下一步唯一主线
 

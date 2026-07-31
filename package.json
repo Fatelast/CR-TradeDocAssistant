@@ -15,14 +15,15 @@
     "typecheck": "npm run typecheck --workspace @rus-trade/desktop",
     "lint": "npm run lint --workspace @rus-trade/desktop",
     "test": "npm run test:worker && npm run test:desktop",
-    "test:worker": "python -m unittest discover -s workers/excel-worker/tests -p \"test_*.py\"",
+    "test:worker": "python -m unittest discover -s workers/excel-worker/tests -p test_*.py && python -m unittest discover -s scripts -p test_*.py",
     "test:desktop": "npm run test --workspace @rus-trade/desktop",
     "package:worker": "python -m PyInstaller --noconfirm --clean --distpath workers/excel-worker/dist --workpath workers/excel-worker/build workers/excel-worker/rus-trade-worker.spec",
     "test:worker:packaged": "node scripts/smoke-packaged-worker.mjs",
     "package:desktop": "npm run package:win --workspace @rus-trade/desktop",
     "package:win": "npm run package:worker && npm run test:worker:packaged && npm run package:desktop",
     "verify:release": "npm run typecheck && npm run lint && npm test && npm run package:win && npm run verify:artifacts",
-    "verify:artifacts": "node scripts/verify-release-artifacts.mjs"
+    "verify:artifacts": "node scripts/verify-release-artifacts.mjs",
+    "verify:private-samples": "python scripts/verify_regression_manifest.py --manifest resources/private-samples/m5-regression-manifest.json"
   },
   "engines": {
     "node": ">=22.0.0",

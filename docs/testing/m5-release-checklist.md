@@ -28,6 +28,9 @@
 
 - [x] NSIS 当前用户静默安装成功；
 - [x] 默认安装目录为 `Programs/CR-TradeDocAssistant`；
+- [x] 自定义安装目录成功；
+- [x] 桌面和开始菜单快捷方式创建与卸载清理正常；
+- [x] 主程序为 Windows GUI 子系统，首次启动无控制台窗口；
 - [x] 安装态主进程、渲染进程和内置 Worker 正常；
 - [x] 首次启动创建 schema v3 数据库；
 - [x] 正常关闭后应用和 Worker 无残留进程；
@@ -82,6 +85,14 @@
 - [ ] 图表、数据验证、条件格式、外部连接或绘图对象。
 
 每个样本都要记录：输入 SHA-256、预期字段、预期写回位置、主要样式、Excel 结果、WPS 结果和已知限制。
+
+提交人工验收前，必须对本地清单运行：
+
+```powershell
+npm run verify:private-samples -- --strict-office-results
+```
+
+该命令只读取 `resources/private-samples/` 中被 Git 忽略的脱敏样本，校验 SHA-256、工作簿结构、表头和列映射；它不替代 Excel/WPS 的人工重开与样式验收。
 
 ## F. 发布结论
 
