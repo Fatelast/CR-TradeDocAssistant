@@ -9,7 +9,25 @@ M1 固定回归样本：
 - `m1-over-limit.xlsx`：有效数据超过 5,000 行，用于验证稳定的超限错误。
 
 任何真实文件进入仓库前必须完成脱敏和人工复核。
-## M5 真实文件内测
+
+## M5 Beta 轻量验收样本
+
+以下为完全合成的脱敏演示样本，可提交仓库；它们不含真实客户、供应商、金额、联系方式、报关信息或业务编号：
+
+- `m5-beta-basic.xlsx`：基础单工作表和既有译文列；
+- `m5-beta-existing-target.xlsx`：非首行表头、已有部分译文和多语言数字混排；
+- `m5-beta-multisheet.xlsx`：多工作表、合并标题、冻结窗格、样式和公式；
+- `m5-beta-minimal-manifest.json`：三份样本的结构、列映射和 SHA-256 清单。
+
+执行以下命令可完成 Worker 层的导入、人工填写模拟、导出、输出重读和源文件不变性校验：
+
+```powershell
+npm run verify:beta-samples
+```
+
+仍需在已安装 Excel 或 WPS 的电脑上，任选一个实际导出文件完成一次人工复开；具体步骤见 `docs/testing/m5-release-checklist.md` 的 C.2。该演示集不能替代 V1 的真实样本验收。
+
+## M5 V1 真实文件内测
 
 仓库内固定样本只用于自动化回归，不能替代真实 Office/WPS 验收。真实脱敏文件放入 `resources/private-samples/`，该目录已被 Git 忽略；使用 `m5-regression-manifest.example.json` 复制建立本地清单。
 

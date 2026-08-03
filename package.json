@@ -23,7 +23,8 @@
     "package:win": "npm run package:worker && npm run test:worker:packaged && npm run package:desktop",
     "verify:release": "npm run typecheck && npm run lint && npm test && npm run package:win && npm run verify:artifacts",
     "verify:artifacts": "node scripts/verify-release-artifacts.mjs",
-    "verify:private-samples": "python scripts/verify_regression_manifest.py --manifest resources/private-samples/m5-regression-manifest.json"
+    "verify:private-samples": "python scripts/verify_regression_manifest.py --manifest resources/private-samples/m5-regression-manifest.json",
+    "verify:beta-samples": "python scripts/verify_regression_manifest.py --manifest resources/samples/m5-beta-minimal-manifest.json && python scripts/verify_beta_minimal_e2e.py"
   },
   "engines": {
     "node": ">=22.0.0",

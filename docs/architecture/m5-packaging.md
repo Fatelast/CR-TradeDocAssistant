@@ -1,15 +1,15 @@
 # 中俄贸易文件助手｜M5 打包工程知识快照
 
-> 当前版本：`0.6.0-beta.1`  
-> 当前状态：工程实现与 Windows 11 本机安装链路验收完成，跨机器与真实样本业务验收待完成  
-> SQLite schema：`3`  
+> 当前版本：`0.6.0-beta.1`
+> 当前状态：工程实现与 Windows 11 本机安装链路验收完成；Beta 轻量验收技术闭环已通过，人工办公软件复开待完成；V1 外部验收待完成
+> SQLite schema：`3`
 > Worker 协议：`1.0`
 
 ## 1. 阶段结论
 
 M5 已将 Python Worker 从“系统 Python + main.py”改造为随安装包分发的独立进程，并完成 Electron NSIS x64 打包、产物校验、解包运行和 Windows 11 本机安装/卸载验收。开发和生产仍使用相同 JSON Lines 协议；Renderer 无权选择 Worker、数据目录或安装资源路径。
 
-尚不能把当前版本称为 V1 正式完成：仍需在无 Node.js/Python、断网的 Windows 10/11 干净环境，以及 Excel/WPS 和脱敏真实文件上完成外部业务验收。
+尚不能把当前版本称为 V1 正式完成：仍需在无 Node.js/Python、断网的 Windows 10/11 干净环境，以及 Excel/WPS 和脱敏真实文件上完成外部业务验收。Beta 仅要求三份合成脱敏演示样本的技术闭环，并在任一办公软件中完成一次人工复开。
 
 ## 2. 代码地图
 
@@ -22,6 +22,8 @@ M5 已将 Python Worker 从“系统 Python + main.py”改造为随安装包分
 - `scripts/smoke-packaged-worker.mjs`：冻结 Worker 协议与 Excel 冒烟；
 - `scripts/verify-release-artifacts.mjs`：安装资源、体积和 SHA-256 校验；
 - `scripts/verify_regression_manifest.py`：私有脱敏样本的 SHA-256、结构和 Office 验收状态只读校验；
+- `scripts/verify_beta_minimal_e2e.py`：三份 Beta 脱敏演示样本的 Worker 导入、人工填写模拟、导出与源文件不变性校验；
+- `resources/samples/m5-beta-minimal-manifest.json`：Beta 演示样本清单；
 - `resources/icons/`：PNG 与多尺寸 ICO；
 - `THIRD_PARTY_NOTICES.md`：随安装包分发的主要第三方许可摘要；
 - `resources/licenses/`：Electron、Vue、Vue I18n、openpyxl 和 PyInstaller 许可全文。
@@ -33,7 +35,7 @@ M5 已将 Python Worker 从“系统 Python + main.py”改造为随安装包分
 3. 生产路径固定为 `process.resourcesPath/worker/rus-trade-worker.exe`；
 4. 安装包为 NSIS x64 当前用户安装，卸载保留 AppData；
 5. 代码签名、自动更新和在线服务均不进入本阶段；
-6. beta 版本通过外部验收后才提升为 `1.0.0`；
+6. Beta 通过轻量验收后才可交付有限内测；只有 V1 外部验收全部通过后才提升为 `1.0.0`；
 7. 安装目录和主程序使用稳定 ASCII 名 `CR-TradeDocAssistant`，产品名、快捷方式和卸载显示保持中文。
 
 ## 4. 已验证事实
@@ -46,17 +48,18 @@ M5 已将 Python Worker 从“系统 Python + main.py”改造为随安装包分
 - TypeScript 和 ESLint 在 M5 源码改造后通过；
 - Worker UTF-8 源码进程回归 2 项通过；
 - 私有脱敏样本清单工具回归 2 项通过，严格模式会阻断未完成 Excel/WPS 验收；
+- `npm run verify:beta-samples` 已通过：3 份合成脱敏样本均完成 SHA-256/结构校验、导入、人工填写模拟、导出、输出重读，源文件哈希保持不变；
 - `npm run verify:release` 完整通过：Worker 25 项、桌面端 10 项、冻结 Worker 冒烟、NSIS 打包和产物校验全部成功；
 - 最终安装包为 126,401,379 字节（120.55 MiB），SHA-256 为 `b5562fc4922f213c948c45d0cfe1202d652c19ab009c8c2c8a60e9a2e67a403c`；
 - 解包版和安装态均正常启动内置 Worker 并创建 schema v3 数据库；
 - 自定义安装目录、桌面和开始菜单快捷方式、Windows GUI 子系统、内置 Worker 和隔离数据库均已在 Windows 11 本机验证；
 - 安装态退出无残留进程，静默卸载后程序目录/注册项/快捷方式清理完成且隔离业务数据库保留。
 
-## 5. 下一步唯一主线
+## 5. 分级验收边界与下一步
 
-1. 在无 Node.js/Python、断网的 Windows 10/11 干净机器安装；
-2. 使用 schema v2/v3 数据副本执行覆盖升级和重复安装测试；
-3. 使用 16 类脱敏真实样本完成 Excel/WPS 重开与样式验收；
-4. 由贸易操作人员抽查并记录缺陷；
-5. 关闭 P0/P1、补充 P2 规避说明并取得书面验收；
-6. 满足全部发布门槛后发布 `1.0.0`。
+1. Beta：在 Excel 或 WPS 中任选一个样本完成一次人工复开；
+2. Beta：记录软件名称、版本、样本、源文件 SHA-256 前后值和结论；
+3. V1：在无 Node.js/Python、断网的 Windows 10/11 干净机器安装；
+4. V1：使用 schema v2/v3 数据副本执行覆盖升级和重复安装测试；
+5. V1：使用 16 类脱敏真实样本完成 Excel/WPS 重开与样式验收，并由贸易操作人员抽查；
+6. V1：关闭 P0/P1、补充 P2 规避说明并取得书面验收后发布 `1.0.0`。

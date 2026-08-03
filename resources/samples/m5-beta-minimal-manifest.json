@@ -1,0 +1,66 @@
+{
+    "schemaVersion":  1,
+    "notice":  "仅包含仓库内合成脱敏演示样本；不代表真实贸易文件验收。",
+    "samples":  [
+                    {
+                        "id":  "beta-basic",
+                        "file":  "m5-beta-basic.xlsx",
+                        "category":  "基础单工作表与既有译文列",
+                        "sha256":  "709c08ca2db6ca9f9ecaded74843ba73311b47c857256bf6af67bcd277f0081b",
+                        "expected":  {
+                                         "sheetCount":  1,
+                                         "sourceSheet":  "装箱清单",
+                                         "headerRow":  2,
+                                         "sourceColumn":  2,
+                                         "targetColumn":  3,
+                                         "mustPreserveFormulas":  false,
+                                         "mustPreserveStyles":  true
+                                     },
+                        "excelResult":  "pending",
+                        "wpsResult":  "pending",
+                        "knownLimitations":  [
+                                                 "仅用于 Beta 基础闭环，不代表真实业务文件。"
+                                             ]
+                    },
+                    {
+                        "id":  "beta-existing-target",
+                        "file":  "m5-beta-existing-target.xlsx",
+                        "category":  "非首行表头、已有部分译文与多语言数字混排",
+                        "sha256":  "efe334974b5e50d377bf5a3f9e6ee87de937afcab01ee4611cd2168ffa4eb668",
+                        "expected":  {
+                                         "sheetCount":  1,
+                                         "sourceSheet":  "商品明细",
+                                         "headerRow":  3,
+                                         "sourceColumn":  2,
+                                         "targetColumn":  3,
+                                         "mustPreserveFormulas":  false,
+                                         "mustPreserveStyles":  true
+                                     },
+                        "excelResult":  "pending",
+                        "wpsResult":  "pending",
+                        "knownLimitations":  [
+                                                 "仅用于 Beta 基础闭环，不代表真实业务文件。"
+                                             ]
+                    },
+                    {
+                        "id":  "beta-multisheet",
+                        "file":  "m5-beta-multisheet.xlsx",
+                        "category":  "多工作表、合并标题、冻结窗格、样式和公式",
+                        "sha256":  "7b9e554e5ecc04e97819e57e4fbcce24404f721af5f6171d57b0f555ffd244ad",
+                        "expected":  {
+                                         "sheetCount":  3,
+                                         "sourceSheet":  "异常反馈",
+                                         "headerRow":  2,
+                                         "sourceColumn":  3,
+                                         "targetColumn":  4,
+                                         "mustPreserveFormulas":  true,
+                                         "mustPreserveStyles":  true
+                                     },
+                        "excelResult":  "pending",
+                        "wpsResult":  "pending",
+                        "knownLimitations":  [
+                                                 "仅用于 Beta 基础闭环，不代表真实业务文件。"
+                                             ]
+                    }
+                ]
+}

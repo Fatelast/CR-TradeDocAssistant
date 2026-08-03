@@ -34,9 +34,10 @@ M1—M4 功能闭环和 M5 Beta 打包工程已实现：
 - PyInstaller `onedir` Worker 独立打包和 UTF-8 JSON Lines；
 - 开发环境 Python 启动与安装环境 Worker EXE 双路径；
 - electron-builder、ASAR、NSIS x64 和卸载保留 AppData 配置；
-- 1024px PNG、多尺寸 ICO、第三方许可和安装包 SHA-256 校验脚本。
+- 1024px PNG、多尺寸 ICO、第三方许可和安装包 SHA-256 校验脚本；
+- 三份合成脱敏 Beta 演示样本及其 SHA-256、导入—审核模拟—导出—输出重读校验。
 
-当前不包含在线翻译或本地模型。M5 工程实现、NSIS 产物和 Windows 11 本机安装链路已经完成；Windows 10/11 干净机器、迁移数据副本、Excel/WPS、脱敏真实文件和业务签字验收仍是 `1.0.0` 发布前置条件。
+当前不包含在线翻译或本地模型。M5 工程实现、NSIS 产物、Windows 11 本机安装链路和三份合成脱敏样本的技术闭环已经完成；Beta 仍需用 Excel 或 WPS 任一软件人工复开一次导出文件。Windows 10/11 干净机器、迁移数据副本、Excel/WPS 双验证、脱敏真实文件和业务签字验收仍是 `1.0.0` 发布前置条件。
 
 ## 开发环境要求
 
@@ -76,7 +77,7 @@ npm run package:desktop
 npm run verify:artifacts
 ```
 
-完整发布验证使用 `npm run verify:release`。
+Beta 三份脱敏演示样本的技术闭环使用 `npm run verify:beta-samples`；完整发布验证使用 `npm run verify:release`。
 
 如需指定 Python 或隔离本地开发数据：
 
